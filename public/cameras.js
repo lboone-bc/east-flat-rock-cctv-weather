@@ -80,13 +80,15 @@ function renderImage(tile, imageUrl) {
   img.src = `${imageUrl}${sep}_ts=${Date.now()}`;
 }
 
+const HLS_CONNECT_TIMEOUT_MS = 12_000;
+
 // NCDOT camera feeds are HLS (.m3u8) live streams. Safari/iOS play HLS
 // natively via <video src>; everywhere else needs hls.js (loaded in index.html).
 function renderHlsStream(tile, streamUrl) {
   const media = tile.querySelector(".media");
   const existing = media.querySelector("video");
   if (existing && existing.dataset.src === streamUrl) {
-    return; // already playing this exact stream, nothing to do
+    return; // already attached to this exact stream, nothing to do
   }
 
   media.innerHTML = "";
@@ -97,25 +99,42 @@ function renderHlsStream(tile, streamUrl) {
   video.dataset.src = streamUrl;
   media.appendChild(video);
 
+  let settled = false;
+
+  // A manifest can parse successfully (or `loadedmetadata` can fire) without
+  // a single frame ever actually decoding — a dead or stalled upstream just
+  // sits there black forever with no error event. Only trust an explicit
+  // `playing` event as "actually live", and give it a window to get there
+  // before giving up and falling back to the viewer iframe.
   const markLive = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(watchdog);
     tile.classList.add("live");
     tile.classList.remove("error");
   };
   const markFailed = () => {
-    console.warn(`HLS playback failed for camera ${tile.dataset.id}, falling back to viewer iframe`);
+    if (settled) return;
+    settled = true;
+    clearTimeout(watchdog);
+    console.warn(`HLS playback failed/stalled for camera ${tile.dataset.id}, falling back to viewer iframe`);
     markError(tile);
     renderFallbackIframe(tile);
   };
 
+  const watchdog = setTimeout(markFailed, HLS_CONNECT_TIMEOUT_MS);
+
+  video.addEventListener("playing", markLive);
+  video.addEventListener("error", markFailed, { once: true });
+
   if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = streamUrl;
-    video.addEventListener("loadedmetadata", markLive, { once: true });
-    video.addEventListener("error", markFailed, { once: true });
+    video.play().catch(() => {});
   } else if (window.Hls && window.Hls.isSupported()) {
     const hls = new window.Hls({ liveSyncDurationCount: 3 });
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
-    hls.on(window.Hls.Events.MANIFEST_PARSED, markLive);
+    hls.on(window.Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
     hls.on(window.Hls.Events.ERROR, (_evt, data) => {
       if (data.fatal) markFailed();
     });
