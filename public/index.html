@@ -4,15 +4,27 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>I-26 / Arden NC — CCTV &amp; Weather Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Overpass:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Overpass+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="crt-overlay" aria-hidden="true"></div>
+  <div class="boot-flash" aria-hidden="true"></div>
+
   <header class="topbar">
-    <h1>I-26 / US-25 Corridor — Live Traffic &amp; Weather</h1>
+    <div class="topbar-title">
+      <span class="eyebrow">Traffic Operations &middot; Buncombe / Henderson Co.</span>
+      <h1>I-26 <span class="slash">/</span> US-25 Corridor</h1>
+    </div>
     <div class="topbar-right">
       <span id="conditions-chip" class="conditions-chip">—</span>
-      <span id="clock" class="clock">--:--</span>
+      <span class="topbar-divider" aria-hidden="true"></span>
+      <span class="feed-count">14 FEEDS</span>
+      <span class="topbar-divider" aria-hidden="true"></span>
+      <span id="clock" class="clock">--:--:--</span>
     </div>
   </header>
 
@@ -34,7 +46,10 @@
 
       <div class="panel radar">
         <h2>Radar</h2>
-        <div id="radar-map"></div>
+        <div class="radar-frame">
+          <div id="radar-map"></div>
+          <span class="radar-readout">ARDEN, NC &middot; SECTOR SCAN</span>
+        </div>
         <div class="radar-attribution">Radar data © <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer.com</a></div>
       </div>
     </aside>

@@ -22,7 +22,7 @@ function celsiusToFahrenheit(c) {
 function updateClock() {
   const el = document.getElementById("clock");
   const now = new Date();
-  el.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  el.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 async function updateCurrentConditions(pointMeta) {
@@ -86,12 +86,15 @@ async function updateForecast(pointMeta) {
       .map(
         (d) => `
       <div class="forecast-day">
-        <span class="name">${d.name}</span>
-        <span class="short">${d.short}</span>
-        <span class="temps">
-          ${d.hi != null ? `<span class="hi">${d.hi}°</span>` : ""}
-          ${d.lo != null ? `<span class="lo">${d.lo}°</span>` : ""}
-        </span>
+        <div class="forecast-day-top">
+          <span class="name">${d.name}</span>
+          <span class="leader"></span>
+          <span class="temps">
+            ${d.hi != null ? `<span class="hi">${d.hi}°</span>` : ""}
+            ${d.lo != null ? `<span class="lo">${d.lo}°</span>` : ""}
+          </span>
+        </div>
+        <div class="short">${d.short}</div>
       </div>`
       )
       .join("");

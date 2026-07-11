@@ -29,10 +29,11 @@ function viewerUrl(id) {
   return `https://www.drivenc.gov/map/Cctv/${id}`;
 }
 
-function buildTile(cam) {
+function buildTile(cam, index) {
   const tile = document.createElement("div");
   tile.className = "camera-tile" + (cam.priority ? " priority" : "");
   tile.dataset.id = cam.id;
+  tile.style.setProperty("--tile-index", index);
 
   const dot = document.createElement("div");
   dot.className = "status-dot";
@@ -166,9 +167,9 @@ async function refreshCameraMeta() {
 
 function init() {
   const grid = document.getElementById("camera-grid");
-  for (const cam of CAMERAS) {
-    grid.appendChild(buildTile(cam));
-  }
+  CAMERAS.forEach((cam, index) => {
+    grid.appendChild(buildTile(cam, index));
+  });
 
   // Render fallback iframes immediately so the wall is useful the instant
   // it loads, then upgrade tiles to live HLS streams once /api/cameras responds.

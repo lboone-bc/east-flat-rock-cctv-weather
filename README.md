@@ -12,10 +12,10 @@ The DriveNC Cameras API has been called live with a real key and all 14
 cameras confirmed working — see [Cameras](#cameras) below for how the
 mapping was resolved. Remaining items:
 
-- [ ] Verify each camera's `drivenc.gov/map/Cctv/{id}` viewer page is
-      actually iframe-embeddable (no blocking `X-Frame-Options`/CSP) — this
-      is the fallback path used whenever `/api/cameras` hasn't responded yet
-      or a stream fails to play.
+- [x] Confirmed `drivenc.gov/map/Cctv/{id}` viewer pages are iframe-embeddable
+      (no blocking `X-Frame-Options`/CSP) — verified visually via the local
+      fallback rendering. This is the path used whenever `/api/cameras`
+      hasn't responded yet or a stream fails to play.
 - [ ] Watch the wall run for a while and confirm 14 simultaneous HLS streams
       don't overload whatever device is driving the TV (a low-power
       stick/smart-TV browser may struggle — if so, consider showing fewer
@@ -94,6 +94,21 @@ Browser (TV) ──> public/index.html / style.css / cameras.js / weather.js
   `public/weather.js`, the latter loading Leaflet + hls.js from CDNs) plus
   one Worker script for the DriveNC proxy. Kept intentionally simple since
   this just needs to run unattended on a TV.
+
+## Design
+
+Styled as a DOT traffic-operations console rather than a generic dashboard:
+near-black background with a faint blueprint grid + CRT scanline overlay,
+HUD-style corner-bracket frames on every camera tile and the radar panel
+(cyan by default, amber on the priority tile, red on error), a glowing
+instrument-style temperature readout, and a departure-board dot-leader
+layout for the 3-day forecast. Typography is Overpass — the FHWA highway
+signage typeface family — for display text, Overpass Mono for all data
+readouts. Palette roles are intentionally not evenly distributed: amber
+marks the header accent/priority feed/alerts, cyan marks
+weather/radar/default HUD elements, green and red are reserved strictly for
+live/error status dots. Camera tiles fade in with a staggered "boot
+sequence" on load. See `public/style.css` for the full system.
 
 ## Cameras
 
