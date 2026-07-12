@@ -140,12 +140,26 @@ function initRadarMap() {
     keyboard: false,
   }).setView([ARDEN_LAT, ARDEN_LON], 8);
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd",
     maxZoom: 12,
   }).addTo(radarMap);
 
-  L.marker([ARDEN_LAT, ARDEN_LON]).addTo(radarMap);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+    subdomains: "abcd",
+    maxZoom: 12,
+    pane: "shadowPane",
+    className: "radar-label-layer",
+  }).addTo(radarMap);
+
+  L.circleMarker([ARDEN_LAT, ARDEN_LON], {
+    radius: 6,
+    color: "#dceeff",
+    weight: 2,
+    fillColor: "#3fc2ff",
+    fillOpacity: 0.95,
+    opacity: 1,
+  }).addTo(radarMap);
 
   // The radar panel's size depends on flex/grid layout (plus a staggered
   // entrance animation and webfont swap-in) that may still be settling when

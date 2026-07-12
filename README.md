@@ -123,8 +123,12 @@ Browser (TV) ──> public/index.html / style.css / cameras.js / weather.js
 - **Radar** uses RainViewer's free public Weather Maps API
   (`api.rainviewer.com/public/weather-maps.json`) for tile URLs, rendered
   with Leaflet on a CARTO dark basemap, animated over the last ~6 frames.
-  RainViewer's free tier is for personal/small-scale use and requires the
-  attribution link that's already in `index.html` — don't remove it.
+  The frame list refreshes every 5 minutes, while the on-screen animation
+  advances every 600ms. RainViewer's free tier is for personal/small-scale
+  use and requires the attribution link that's already in `index.html` —
+  don't remove it.
+- **Weather refresh cadence:** current conditions and forecast reload every
+  12 minutes from the browser.
 - No framework/build step for the front end. It's `public/index.html` +
   `public/style.css` + two ES modules (`public/cameras.js`,
   `public/weather.js`, the latter loading Leaflet + hls.js from CDNs) plus
