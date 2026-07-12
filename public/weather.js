@@ -132,7 +132,7 @@ function initRadarMap() {
     touchZoom: false,
     boxZoom: false,
     keyboard: false,
-  }).setView([ARDEN_LAT, ARDEN_LON], 7);
+  }).setView([ARDEN_LAT, ARDEN_LON], 8);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd",
