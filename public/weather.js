@@ -153,6 +153,11 @@ async function refreshRadarFrames() {
       L.tileLayer(`${data.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
         opacity: 0,
         zIndex: 10,
+        // RainViewer only renders real radar tiles up to zoom 7 — past that
+        // it serves a "Zoom Level Not Supported" placeholder tile. Capping
+        // maxNativeZoom makes Leaflet reuse (and upscale) the zoom-7 tiles
+        // at closer map zooms instead of requesting unsupported ones.
+        maxNativeZoom: 7,
       }).addTo(radarMap)
     );
 
