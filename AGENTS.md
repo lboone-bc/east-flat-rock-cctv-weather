@@ -51,6 +51,10 @@ weather, radar, layout, or deployment behavior.
   either identity to the original Arden project.
 - `wrangler.jsonc` is the deployment source of truth and must retain
   `keep_vars: true` while dashboard-managed bindings are used.
+- Cloudflare currently reports its GitHub account connection as disconnected.
+  Do not assume a push deployed production: use authenticated `wrangler deploy`
+  until the GitHub app is reauthorized, then verify the production asset hash
+  and `/api/cameras` response after every release.
 - Never commit `.dev.vars` or expose `DRIVENC_API_KEY` in browser code, logs,
   docs, screenshots, or commands whose expanded values are displayed.
 - Node.js 22+ is required by the installed Wrangler version.

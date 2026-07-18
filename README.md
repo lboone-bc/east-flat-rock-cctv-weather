@@ -28,6 +28,8 @@ static assets.
       `east-flat-rock-cctv-weather`.
 - [x] Set/confirm `DRIVENC_API_KEY`, confirm the production build, and record
       the actual deployed URL in this README and `REFERENCE_INDEX.md`.
+- [ ] Reauthorize Cloudflare's GitHub app for this repository so pushes to
+      `main` resume automatic builds; direct Wrangler deploys work meanwhile.
 - [ ] Soak-test 12 simultaneous HLS feeds on the final TV/browser hardware.
 
 > [!IMPORTANT]
@@ -181,6 +183,12 @@ and [Cloudflare production build](https://dash.cloudflare.com/d1d2cef3519480a708
 have been created for this replica.
 
 Production wall: [east-flat-rock-cctv-weather.lboone.workers.dev](https://east-flat-rock-cctv-weather.lboone.workers.dev/)
+
+The current runtime was deployed directly with Wrangler on **2026-07-18** as
+version `3067e206-1cff-43db-8d19-e86ea192889e`. Cloudflare has the correct
+repository and production branch configured but currently reports its GitHub
+account connection as disconnected. Until the GitHub app is reauthorized,
+`git push` updates the repository but does not start a Cloudflare build.
 
 1. Add or confirm the encrypted secret with
    `npx wrangler secret put DRIVENC_API_KEY` or through **Settings → Variables
