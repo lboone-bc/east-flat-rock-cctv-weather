@@ -20,12 +20,13 @@ weather, radar, layout, or deployment behavior.
 ## Camera and layout invariants
 
 - The wall contains exactly 12 feeds in this order:
-  1. eight closest enabled interstate cameras, nearest first;
+  1. eight closest enabled interstate cameras in the chosen display order
+     MM53 (focus), MM59, MM54.2, MM51.5, MM49, MM48.2, MM48, MM46.2;
   2. four closest enabled non-interstate road cameras, nearest first.
 - Camera 1 is the only `priority: true` camera and must be the closest
   interstate feed.
 - DOM order is functional. With the 4-column grid and 3×3 hero, entries 9–12
-  form the bottom row. Do not reorder by ID, direction, or mile marker.
+  form the bottom row. Do not reorder except on explicit user direction.
 - Keep `CAMERAS` in `public/cameras.js` and `WANTED_CAMERA_IDS` in
   `src/worker.js` identical and in the same order. Run `npm run check` after
   every roster change.
@@ -55,6 +56,13 @@ weather, radar, layout, or deployment behavior.
 - Node.js 22+ is required by the installed Wrangler version.
 - The absence of a key is an intentional degraded mode: `/api/cameras`
   returns `[]` and the browser uses the public iframe fallbacks.
+- Preserve camera self-healing: successful metadata refreshes every 90 seconds,
+  empty/error metadata retries after 10 seconds, and a feed that fails or makes
+  no media-time progress for 25 seconds falls back and retries after 10 seconds.
+  Fatal playback errors must still be handled after the first `playing` event.
+- Keep `/api/cameras` responses `Cache-Control: no-store`; the Worker already
+  owns the upstream cache, and browser caching can strand a wall on stale
+  pre-secret metadata.
 
 ## Required verification
 
@@ -66,9 +74,10 @@ npm run deploy -- --dry-run
 git diff --check
 ```
 
-For camera/location changes, also verify the live NWS point, all selected HLS
-manifests and media segments, all iframe fallbacks, and the 1920×1080 layout.
-Use Node 22+ for Wrangler commands.
+For camera/location or playback changes, also verify the live NWS point, all
+selected HLS manifests and media segments, all iframe fallbacks, advancing
+`video.currentTime` across every feed, and the 1920×1080 layout. Use Node 22+
+for Wrangler commands.
 
 ## Documentation contract
 

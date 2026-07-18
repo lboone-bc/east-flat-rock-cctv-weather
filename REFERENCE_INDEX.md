@@ -40,14 +40,17 @@ records. Haversine distances use Earth radius 3,958.7613 miles and the
 canonical center. All selected records had `Views[0].Status = Enabled`, a
 populated `.m3u8` URL, a master and current media segment returning HTTP 200,
 and an iframe viewer returning HTTP 200 without frame-blocking headers.
+The interstate set is distance-selected; wall positions after the focus feed
+use the explicit operational order MM59, MM54.2, MM51.5, MM49, MM48.2, MM48,
+MM46.2 rather than distance rank.
 
-| Wall rank | Group | ID | Display label | Distance | API Location / Description | Raw roadway / direction | Camera coordinate |
+| Wall position | Group | ID | Display label | Distance | API Location / Description | Raw roadway / direction | Camera coordinate |
 |---:|---|---:|---|---:|---|---|---|
 | **1** | Interstate / **focus** | `5131` | I-26 MM53 — Upward Rd | 0.510 mi | `CCTV14-I26-53W_UPWARD` | I-26 / Westbound | `35.297370, -82.406480` |
-| 2 | Interstate | `5264` | I-26 MM54.2 — US-25 | 0.806 mi | `CCTV14-I26-54.2S_US25` | I-26 / Westbound | `35.282680, -82.399680` |
-| 3 | Interstate | `6102` | I-26 MM51.5 — Tracy Grove Rd | 1.900 mi | `CCTV14-I26-51.5W_TRACYGROVE` | I-26 / Westbound | `35.315260, -82.420060` |
-| 4 | Interstate | `4878` | I-26 MM49 — US-64 | 3.997 mi | `CCTV14-I26-49W_US64` | I-26 / Southbound | `35.341170, -82.439810` |
-| 5 | Interstate | `5265` | I-26 MM59 — Holbert Cove Rd | 5.053 mi | `CCTV14-I26-59N_HOLBERTCOVE` | I-26 / Westbound | `35.248770, -82.328140` |
+| 2 | Interstate | `5265` | I-26 MM59 — Holbert Cove Rd | 5.053 mi | `CCTV14-I26-59N_HOLBERTCOVE` | I-26 / Westbound | `35.248770, -82.328140` |
+| 3 | Interstate | `5264` | I-26 MM54.2 — US-25 | 0.806 mi | `CCTV14-I26-54.2S_US25` | I-26 / Westbound | `35.282680, -82.399680` |
+| 4 | Interstate | `6102` | I-26 MM51.5 — Tracy Grove Rd | 1.900 mi | `CCTV14-I26-51.5W_TRACYGROVE` | I-26 / Westbound | `35.315260, -82.420060` |
+| 5 | Interstate | `4878` | I-26 MM49 — US-64 | 3.997 mi | `CCTV14-I26-49W_US64` | I-26 / Southbound | `35.341170, -82.439810` |
 | 6 | Interstate | `6119` | I-26 MM48.2 | 5.642 mi | `CCTV14-I26-48.2E` | I-26 / Eastbound | `35.359530, -82.458460` |
 | 7 | Interstate | `4877` | I-26 MM48 | 5.663 mi | `CCTV14-I26-48W` | I-26 / Southbound | `35.359820, -82.458610` |
 | 8 | Interstate | `6097` | I-26 MM46.2 | 7.557 mi | `CCTV14-I26-46.2E` | I-26 / Eastbound | `35.379360, -82.482540` |
@@ -95,8 +98,12 @@ Camera/road references:
 | Behavior | Value | Owner |
 |---|---:|---|
 | Browser camera metadata refresh | 90 seconds | `public/cameras.js` |
+| Empty/error camera metadata retry | 10 seconds | `public/cameras.js` |
 | Worker camera cache | 90 seconds | `src/worker.js` |
 | HLS connection watchdog | 18 seconds | `public/cameras.js` |
+| HLS no-progress watchdog | 25 seconds | `public/cameras.js` |
+| HLS recovery retry | 10 seconds | `public/cameras.js` |
+| Camera API browser cache policy | `no-store` | `src/worker.js` |
 | Weather/forecast refresh | 12 minutes | `public/weather.js` |
 | Radar frame-list refresh | 5 minutes | `public/weather.js` |
 | Radar animation step | 600 ms | `public/weather.js` |
@@ -111,11 +118,11 @@ Camera/road references:
 | Current local `origin` | `https://github.com/lboone-bc/east-flat-rock-cctv-weather.git` |
 | Cloudflare Worker name | `east-flat-rock-cctv-weather` in `wrangler.jsonc` |
 | Cloudflare build | [Production build supplied 2026-07-18](https://dash.cloudflare.com/d1d2cef3519480a708037f7211b49b84/workers/services/view/east-flat-rock-cctv-weather/production/builds/f35bfc59-e036-412d-9f2b-33cf3ca69f5a) |
-| Actual deployed URL | **TBD after production build confirmation** |
-| Production secret | **TBD; confirm `DRIVENC_API_KEY` after provisioning** |
+| Actual deployed URL | [east-flat-rock-cctv-weather.lboone.workers.dev](https://east-flat-rock-cctv-weather.lboone.workers.dev/) |
+| Production secret | `DRIVENC_API_KEY` confirmed as encrypted Worker secret on 2026-07-18 |
 
-Do not infer the account's `workers.dev` subdomain from the Worker name. Record
-the actual URL here and in `README.md` after deployment.
+Do not infer the account's `workers.dev` subdomain from the Worker name. Keep
+the verified URL here and in `README.md` synchronized if deployment changes.
 
 ## Verification index
 

@@ -14,10 +14,10 @@
 // Confirmed field: Views[0].VideoUrl is a live HLS (.m3u8) stream.
 const WANTED_CAMERA_IDS = [
   5131, // I-26 MM53 — Upward Rd (priority)
+  5265, // I-26 MM59 — Holbert Cove Rd
   5264, // I-26 MM54.2 — US-25
   6102, // I-26 MM51.5 — Tracy Grove Rd
   4878, // I-26 MM49 — US-64
-  5265, // I-26 MM59 — Holbert Cove Rd
   6119, // I-26 MM48.2
   4877, // I-26 MM48
   6097, // I-26 MM46.2
@@ -50,7 +50,10 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
     status,
     headers: {
       "content-type": "application/json",
-      "cache-control": "public, max-age=60",
+      // The Worker already keeps a short in-memory upstream cache. Browser or
+      // intermediary caching can strand a long-running wall on an empty
+      // pre-secret response, so camera metadata itself should always revalidate.
+      "cache-control": "no-store",
       ...extraHeaders,
     },
   });
@@ -79,8 +82,10 @@ async function handleCamerasApi(env) {
     }
     const cameras = await upstream.json();
 
-    const wanted = new Set(WANTED_CAMERA_IDS);
-    const matched = cameras.filter((c) => wanted.has(c.Id)).map(extractMedia);
+    const byId = new Map(cameras.map((camera) => [camera.Id, camera]));
+    const matched = WANTED_CAMERA_IDS.map((id) => byId.get(id))
+      .filter(Boolean)
+      .map(extractMedia);
 
     cache = { data: matched, fetchedAt: now };
     return jsonResponse(matched);

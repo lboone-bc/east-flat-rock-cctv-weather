@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const expectedCameraIds = [5131, 5264, 6102, 4878, 5265, 6119, 4877, 6097, 5253, 4867, 4873, 4872];
+const expectedCameraIds = [5131, 5265, 5264, 6102, 4878, 6119, 4877, 6097, 5253, 4867, 4873, 4872];
 
 for (const path of ["public/cameras.js", "public/weather.js", "src/worker.js"]) {
   const result = spawnSync(process.execPath, ["--check", new URL(path, root).pathname], {
@@ -48,6 +48,11 @@ assert.match(weatherSource, /lon:\s*-82\.398257/);
 assert.match(weatherSource, /nwsPoint:\s*"35\.2943,-82\.3983"/);
 assert.match(indexSource, /I-26 \/ East Flat Rock NC/);
 assert.doesNotMatch(`${cameraSource}\n${weatherSource}\n${indexSource}\n${workerSource}`, /\bArden\b/i);
+assert.match(cameraSource, /const CAMERA_META_RETRY_MS = 10_000/);
+assert.match(cameraSource, /const HLS_RETRY_MS = 10_000/);
+assert.match(cameraSource, /const HLS_STALL_TIMEOUT_MS = 25_000/);
+assert.match(cameraSource, /Date\.now\(\) - playback\.lastProgressAt >= HLS_STALL_TIMEOUT_MS/);
+assert.match(workerSource, /"cache-control": "no-store"/);
 
 const packageJson = JSON.parse(packageSource);
 const lockJson = JSON.parse(lockSource);
@@ -59,4 +64,6 @@ assert.equal(lockJson.packages[""].name, projectName);
 assert.equal(wranglerJson.name, projectName);
 assert.equal(wranglerJson.keep_vars, true, "Dashboard-managed variables must survive deploys");
 
-console.log("Configuration verified: East Flat Rock center, 8+4 camera order, Worker sync, and project identity.");
+console.log(
+  "Configuration verified: East Flat Rock center, 8+4 camera order, playback recovery, Worker sync, and project identity."
+);

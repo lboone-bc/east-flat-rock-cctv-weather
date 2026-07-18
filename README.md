@@ -5,7 +5,7 @@ Flat Rock, NC 28731**. It preserves the original traffic-operations-console
 layout while moving every location-specific input to East Flat Rock:
 
 - live weather and a radar map centered on the address;
-- the eight closest enabled interstate cameras, nearest first;
+- the eight closest enabled interstate cameras in the chosen operational order;
 - the closest interstate camera as the large focus feed; and
 - the four closest enabled non-interstate road cameras in the bottom row.
 
@@ -26,7 +26,7 @@ static assets.
       `lboone-bc/east-flat-rock-cctv-weather`.
 - [x] Create the dedicated Cloudflare service/build target,
       `east-flat-rock-cctv-weather`.
-- [ ] Set/confirm `DRIVENC_API_KEY`, confirm the production build, and record
+- [x] Set/confirm `DRIVENC_API_KEY`, confirm the production build, and record
       the actual deployed URL in this README and `REFERENCE_INDEX.md`.
 - [ ] Soak-test 12 simultaneous HLS feeds on the final TV/browser hardware.
 
@@ -68,18 +68,19 @@ Cameras API on **2026-07-18**. Selection rules are deliberately reproducible:
 3. Sort interstate (`I-*`) cameras separately and take the closest eight.
 4. Exclude interstates from the remaining pool and take the closest four
    highway/freeway/road cameras.
-5. Put the closest interstate first with `priority: true`; preserve the rest
-   in nearest-first order. DOM order is a layout contract.
+5. Put the closest interstate first with `priority: true`; display the other
+   seven in the requested MM59 → MM54.2 → MM51.5 → MM49 → MM48.2 → MM48 →
+   MM46.2 operational order. DOM order is a layout contract.
 
-### Eight closest interstate feeds
+### Eight closest interstate feeds — display order
 
 | Rank | Label | DriveNC ID | Distance | DriveNC location | Status |
 |---:|---|---:|---:|---|---|
 | **1 / focus** | **I-26 MM53 — Upward Rd** | `5131` | 0.510 mi | `CCTV14-I26-53W_UPWARD` | ✅ Live HLS |
-| 2 | I-26 MM54.2 — US-25 | `5264` | 0.806 mi | `CCTV14-I26-54.2S_US25` | ✅ Live HLS |
-| 3 | I-26 MM51.5 — Tracy Grove Rd | `6102` | 1.900 mi | `CCTV14-I26-51.5W_TRACYGROVE` | ✅ Live HLS |
-| 4 | I-26 MM49 — US-64 | `4878` | 3.997 mi | `CCTV14-I26-49W_US64` | ✅ Live HLS |
-| 5 | I-26 MM59 — Holbert Cove Rd | `5265` | 5.053 mi | `CCTV14-I26-59N_HOLBERTCOVE` | ✅ Live HLS |
+| 2 | I-26 MM59 — Holbert Cove Rd | `5265` | 5.053 mi | `CCTV14-I26-59N_HOLBERTCOVE` | ✅ Live HLS |
+| 3 | I-26 MM54.2 — US-25 | `5264` | 0.806 mi | `CCTV14-I26-54.2S_US25` | ✅ Live HLS |
+| 4 | I-26 MM51.5 — Tracy Grove Rd | `6102` | 1.900 mi | `CCTV14-I26-51.5W_TRACYGROVE` | ✅ Live HLS |
+| 5 | I-26 MM49 — US-64 | `4878` | 3.997 mi | `CCTV14-I26-49W_US64` | ✅ Live HLS |
 | 6 | I-26 MM48.2 | `6119` | 5.642 mi | `CCTV14-I26-48.2E` | ✅ Live HLS |
 | 7 | I-26 MM48 | `4877` | 5.663 mi | `CCTV14-I26-48W` | ✅ Live HLS |
 | 8 | I-26 MM46.2 | `6097` | 7.557 mi | `CCTV14-I26-46.2E` | ✅ Live HLS |
@@ -164,9 +165,12 @@ npm run dev
 ```
 
 Without a key, `/api/cameras` returns `[]` and every tile uses its public
-DriveNC iframe fallback. With a key, each tile upgrades to HLS and falls back
-individually if playback does not begin within about 18 seconds. Metadata is
-retried every 90 seconds.
+DriveNC iframe fallback. With a key, each tile upgrades to HLS. A feed falls
+back individually if playback does not begin within about 18 seconds or stops
+advancing for 25 seconds, then retries HLS after 10 seconds. Successful camera
+metadata refreshes every 90 seconds; an empty or failed response retries after
+10 seconds and focus, visibility, and network-restoration events trigger an
+immediate check.
 
 ## Cloudflare deployment
 
@@ -176,11 +180,14 @@ dedicated [GitHub repository](https://github.com/lboone-bc/east-flat-rock-cctv-w
 and [Cloudflare production build](https://dash.cloudflare.com/d1d2cef3519480a708037f7211b49b84/workers/services/view/east-flat-rock-cctv-weather/production/builds/f35bfc59-e036-412d-9f2b-33cf3ca69f5a)
 have been created for this replica.
 
+Production wall: [east-flat-rock-cctv-weather.lboone.workers.dev](https://east-flat-rock-cctv-weather.lboone.workers.dev/)
+
 1. Add or confirm the encrypted secret with
    `npx wrangler secret put DRIVENC_API_KEY` or through **Settings → Variables
-   and Secrets** in the dashboard.
-2. Confirm the production build succeeds and record the actual `*.workers.dev`
-   URL here and in `REFERENCE_INDEX.md`.
+   and Secrets** in the dashboard. This is confirmed for production as of
+   **2026-07-18**.
+2. Confirm the production build succeeds and keep the actual `*.workers.dev`
+   URL here and in `REFERENCE_INDEX.md` current.
 3. Verify `/api/cameras` returns all 12 IDs and leave the wall running on the
    target display.
 
@@ -195,6 +202,9 @@ variables.
 If all feeds unexpectedly fall back, request `/api/cameras`. An empty array
 with HTTP 200 means `DRIVENC_API_KEY` is absent; HTTP 502 indicates an upstream
 request failure. Re-add the secret and allow a few seconds for propagation.
+The wall retries an empty response every 10 seconds. A red camera status means
+HLS playback failed or stalled and is in its automatic 10-second recovery
+cycle; green means media time is advancing.
 
 ## Validation
 

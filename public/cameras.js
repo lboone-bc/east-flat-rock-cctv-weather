@@ -1,7 +1,8 @@
 // Camera list centered on 103 Education Dr, Flat Rock, NC. The first eight
-// entries are the closest enabled interstate cameras in straight-line order;
-// the final four are the closest enabled non-interstate road cameras. This
-// ordering is intentional: the last four fill the dashboard's bottom row.
+// entries are the closest enabled interstate cameras in the requested
+// operational display order; the final four are the closest enabled
+// non-interstate road cameras in straight-line order. This ordering is
+// intentional: the last four fill the dashboard's bottom row.
 //
 // `id` is DriveNC's numeric camera Id from their official Cameras API
 // (NOT the GUID used in drivenc.gov's public viewer-page URLs — that GUID
@@ -10,10 +11,10 @@
 // the full API dump. See README for details.)
 const CAMERAS = [
   { id: 5131, label: "I-26 MM53 — Upward Rd", priority: true },
+  { id: 5265, label: "I-26 MM59 — Holbert Cove Rd" },
   { id: 5264, label: "I-26 MM54.2 — US-25" },
   { id: 6102, label: "I-26 MM51.5 — Tracy Grove Rd" },
   { id: 4878, label: "I-26 MM49 — US-64" },
-  { id: 5265, label: "I-26 MM59 — Holbert Cove Rd" },
   { id: 6119, label: "I-26 MM48.2" },
   { id: 4877, label: "I-26 MM48" },
   { id: 6097, label: "I-26 MM46.2" },
@@ -25,6 +26,11 @@ const CAMERAS = [
 
 const CAMERA_API_URL = "/api/cameras";
 const CAMERA_META_REFRESH_MS = 90_000; // how often we re-ask the proxy for fresh media URLs
+const CAMERA_META_RETRY_MS = 10_000; // recover quickly after a missing key or transient API failure
+const HLS_RETRY_MS = 10_000;
+const HLS_CONNECT_TIMEOUT_MS = 18_000;
+const HLS_STALL_CHECK_MS = 5_000;
+const HLS_STALL_TIMEOUT_MS = 25_000;
 
 function viewerUrl(id) {
   return `https://www.drivenc.gov/map/Cctv/${id}`;
@@ -63,9 +69,35 @@ function buildTile(cam, index) {
 const IFRAME_NATURAL_WIDTH = 1600;
 const IFRAME_NATURAL_HEIGHT = 1000;
 
-function renderFallbackIframe(tile) {
+function disposeTileResources(tile) {
+  const playback = tile._playbackState;
+  if (playback) {
+    playback.disposed = true;
+    clearTimeout(playback.connectTimer);
+    clearInterval(playback.stallTimer);
+    playback.hls?.destroy();
+    playback.video?.pause();
+    playback.video?.removeAttribute("src");
+    playback.video?.load();
+    tile._playbackState = null;
+  }
+
+  if (tile._streamRetryTimer) {
+    clearTimeout(tile._streamRetryTimer);
+    tile._streamRetryTimer = null;
+  }
+
+  if (tile._fallbackResizeObserver) {
+    tile._fallbackResizeObserver.disconnect();
+    tile._fallbackResizeObserver = null;
+  }
+}
+
+function renderFallbackIframe(tile, { error = false } = {}) {
   const id = tile.dataset.id;
-  tile.classList.remove("live", "error");
+  disposeTileResources(tile);
+  tile.classList.remove("live");
+  tile.classList.toggle("error", error);
   const media = tile.querySelector(".media");
   media.innerHTML = "";
 
@@ -101,6 +133,7 @@ function renderFallbackIframe(tile) {
 }
 
 function renderImage(tile, imageUrl) {
+  disposeTileResources(tile);
   tile.classList.add("live");
   tile.classList.remove("error");
   const media = tile.querySelector(".media");
@@ -115,20 +148,21 @@ function renderImage(tile, imageUrl) {
   img.src = `${imageUrl}${sep}_ts=${Date.now()}`;
 }
 
-// NCDOT's streaming servers have brief (few-second) manifest/segment blips
-// fairly often even on healthy cameras; give hls.js's own internal retry
-// backoff room to ride those out before we give up on this attempt.
-const HLS_CONNECT_TIMEOUT_MS = 18_000;
-
 // NCDOT camera feeds are HLS (.m3u8) live streams. Safari/iOS play HLS
 // natively via <video src>; everywhere else needs hls.js (loaded in index.html).
 function renderHlsStream(tile, streamUrl) {
   const media = tile.querySelector(".media");
   const existing = media.querySelector("video");
-  if (existing && existing.dataset.src === streamUrl) {
+  if (
+    existing &&
+    existing.dataset.src === streamUrl &&
+    tile._playbackState &&
+    !tile._playbackState.disposed
+  ) {
     return; // already attached to this exact stream, nothing to do
   }
 
+  disposeTileResources(tile);
   media.innerHTML = "";
   const video = document.createElement("video");
   video.autoplay = true;
@@ -137,89 +171,169 @@ function renderHlsStream(tile, streamUrl) {
   video.dataset.src = streamUrl;
   media.appendChild(video);
 
-  let settled = false;
+  const playback = {
+    disposed: false,
+    failed: false,
+    hls: null,
+    video,
+    connectTimer: null,
+    stallTimer: null,
+    lastMediaTime: 0,
+    lastProgressAt: Date.now(),
+  };
+  tile._playbackState = playback;
 
   // A manifest can parse successfully (or `loadedmetadata` can fire) without
   // a single frame ever actually decoding — a dead or stalled upstream just
-  // sits there black forever with no error event. Only trust an explicit
-  // `playing` event as "actually live", and give it a window to get there
-  // before giving up and falling back to the viewer iframe.
+  // sits there black forever with no error event. Track both the initial
+  // `playing` event and continued media-time progress so a wall left running
+  // for days can recover instead of freezing forever on its last frame.
   const markLive = () => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(watchdog);
+    if (playback.disposed) return;
+    playback.lastMediaTime = video.currentTime;
+    playback.lastProgressAt = Date.now();
+    clearTimeout(playback.connectTimer);
     tile.classList.add("live");
     tile.classList.remove("error");
   };
-  const markFailed = () => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(watchdog);
-    console.warn(`HLS playback failed/stalled for camera ${tile.dataset.id}, falling back to viewer iframe`);
-    markError(tile);
-    renderFallbackIframe(tile);
+
+  const markFailed = (reason = "unknown playback failure", { retry = true } = {}) => {
+    if (playback.disposed || playback.failed) return;
+    playback.failed = true;
+    console.warn(
+      `HLS playback failed/stalled for camera ${tile.dataset.id} (${reason}); ${
+        retry ? "retrying shortly" : "using fallback"
+      }`
+    );
+    renderFallbackIframe(tile, { error: true });
+    if (retry) {
+      tile._streamRetryTimer = setTimeout(() => {
+        tile._streamRetryTimer = null;
+        renderHlsStream(tile, streamUrl);
+      }, HLS_RETRY_MS);
+    }
   };
 
-  const watchdog = setTimeout(markFailed, HLS_CONNECT_TIMEOUT_MS);
+  playback.connectTimer = setTimeout(
+    () => markFailed("initial connection timeout"),
+    HLS_CONNECT_TIMEOUT_MS
+  );
+
+  playback.stallTimer = setInterval(() => {
+    if (playback.disposed) return;
+
+    // Browsers deliberately throttle or suspend hidden tabs. Reset the stall
+    // baseline while hidden rather than treating normal suspension as failure.
+    if (document.hidden) {
+      playback.lastMediaTime = video.currentTime;
+      playback.lastProgressAt = Date.now();
+      return;
+    }
+
+    if (Math.abs(video.currentTime - playback.lastMediaTime) > 0.05) {
+      playback.lastMediaTime = video.currentTime;
+      playback.lastProgressAt = Date.now();
+      return;
+    }
+
+    if (Date.now() - playback.lastProgressAt >= HLS_STALL_TIMEOUT_MS) {
+      markFailed("no frame progress");
+    }
+  }, HLS_STALL_CHECK_MS);
 
   video.addEventListener("playing", markLive);
-  video.addEventListener("error", markFailed, { once: true });
+  video.addEventListener(
+    "error",
+    () => markFailed(video.error?.message || "video element error"),
+    { once: true }
+  );
 
   if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = streamUrl;
-    video.play().catch(() => {});
+    video.play().catch((err) => markFailed(err?.message || "autoplay rejected"));
   } else if (window.Hls && window.Hls.isSupported()) {
     const hls = new window.Hls({ liveSyncDurationCount: 3 });
+    playback.hls = hls;
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
-    hls.on(window.Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(window.Hls.Events.MANIFEST_PARSED, () =>
+      video.play().catch((err) => markFailed(err?.message || "autoplay rejected"))
+    );
     hls.on(window.Hls.Events.ERROR, (_evt, data) => {
-      if (data.fatal) markFailed();
+      if (data.fatal) markFailed(`${data.type}: ${data.details}`);
     });
   } else {
-    markFailed();
+    markFailed("HLS playback is unavailable in this browser", { retry: false });
   }
 }
 
-function markError(tile) {
-  tile.classList.add("error");
-  tile.classList.remove("live");
+let cameraMetaRefreshTimer = null;
+let cameraMetaRefreshInFlight = false;
+
+function scheduleCameraMetaRefresh(delay) {
+  clearTimeout(cameraMetaRefreshTimer);
+  cameraMetaRefreshTimer = setTimeout(refreshCameraMeta, delay);
 }
 
 async function refreshCameraMeta() {
+  if (cameraMetaRefreshInFlight) return;
+  cameraMetaRefreshInFlight = true;
   let payload = [];
+  let metadataAvailable = false;
   try {
     const res = await fetch(CAMERA_API_URL, { cache: "no-store" });
     if (!res.ok) throw new Error(`camera API returned ${res.status}`);
     payload = await res.json();
+    if (!Array.isArray(payload)) throw new Error("camera API returned an invalid payload");
+    metadataAvailable = true;
   } catch (err) {
-    console.warn("Camera metadata fetch failed, using viewer-page fallback for all tiles:", err);
-    payload = [];
+    console.warn("Camera metadata fetch failed; preserving the current tile state:", err);
   }
 
-  const byId = new Map(payload.map((c) => [String(c.id), c]));
+  try {
+    if (!metadataAvailable) return;
 
-  document.querySelectorAll(".camera-tile").forEach((tile) => {
-    const id = tile.dataset.id;
-    const data = byId.get(id);
+    const byId = new Map(
+      payload
+        .filter((camera) => camera?.id != null)
+        .map((camera) => [String(camera.id), camera])
+    );
 
-    if (!data || (!data.videoUrl && !data.imageUrl)) {
-      renderFallbackIframe(tile);
-      return;
-    }
+    document.querySelectorAll(".camera-tile").forEach((tile) => {
+      const id = tile.dataset.id;
+      const data = byId.get(id);
 
-    try {
-      if (data.videoUrl) {
-        renderHlsStream(tile, data.videoUrl);
-      } else {
-        renderImage(tile, data.imageUrl);
+      if (!data || (!data.videoUrl && !data.imageUrl)) {
+        // Do not tear down a healthy stream because one metadata response is
+        // partial. Its own error/stall watchdog remains responsible for it.
+        if (!tile.querySelector("video, img, iframe")) {
+          renderFallbackIframe(tile);
+        }
+        return;
       }
-    } catch (err) {
-      console.warn(`Failed to render camera ${id}:`, err);
-      markError(tile);
-      renderFallbackIframe(tile);
-    }
-  });
+
+      try {
+        if (data.videoUrl) {
+          renderHlsStream(tile, data.videoUrl);
+        } else {
+          renderImage(tile, data.imageUrl);
+        }
+      } catch (err) {
+        console.warn(`Failed to render camera ${id}:`, err);
+        renderFallbackIframe(tile, { error: true });
+      }
+    });
+  } finally {
+    cameraMetaRefreshInFlight = false;
+    const hasLiveMedia = payload.some((camera) => camera?.videoUrl || camera?.imageUrl);
+    scheduleCameraMetaRefresh(hasLiveMedia ? CAMERA_META_REFRESH_MS : CAMERA_META_RETRY_MS);
+  }
+}
+
+function refreshCameraMetaNow() {
+  if (cameraMetaRefreshInFlight) return;
+  clearTimeout(cameraMetaRefreshTimer);
+  refreshCameraMeta();
 }
 
 function init() {
@@ -236,7 +350,18 @@ function init() {
   document.querySelectorAll(".camera-tile").forEach(renderFallbackIframe);
 
   refreshCameraMeta();
-  setInterval(refreshCameraMeta, CAMERA_META_REFRESH_MS);
+
+  window.addEventListener("online", refreshCameraMetaNow);
+  window.addEventListener("focus", refreshCameraMetaNow);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    document.querySelectorAll(".camera-tile").forEach((tile) => {
+      if (!tile._playbackState) return;
+      tile._playbackState.lastMediaTime = tile.querySelector("video")?.currentTime || 0;
+      tile._playbackState.lastProgressAt = Date.now();
+    });
+    refreshCameraMetaNow();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);
