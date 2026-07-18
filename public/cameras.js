@@ -1,4 +1,7 @@
-// Camera list for the I-26 / US-25 corridor near Arden, NC.
+// Camera list centered on 103 Education Dr, Flat Rock, NC. The first eight
+// entries are the closest enabled interstate cameras in straight-line order;
+// the final four are the closest enabled non-interstate road cameras. This
+// ordering is intentional: the last four fill the dashboard's bottom row.
 //
 // `id` is DriveNC's numeric camera Id from their official Cameras API
 // (NOT the GUID used in drivenc.gov's public viewer-page URLs — that GUID
@@ -6,18 +9,18 @@
 // matched by cross-referencing camera location names/coordinates against
 // the full API dump. See README for details.)
 const CAMERAS = [
-  { id: 4208, label: "I-26 MM37 — Long Shoals Rd", priority: true },
-  { id: 4839, label: "I-26 MM35" },
-  { id: 6120, label: "I-26 MM36" },
-  { id: 5269, label: "I-26 MM39" }, // nearest live camera to MM39 (exact MM39 unit has no video feed)
-  { id: 4210, label: "I-26 MM40" },
-  { id: 4868, label: "I-26 MM41" },
-  { id: 4876, label: "I-26 MM44 — US-25" },
-  { id: 6101, label: "I-26 MM45" },
-  { id: 4221, label: "US-25 — Airport Rd" },
-  { id: 4224, label: "US-25 — Long Shoals Rd" },
-  { id: 4223, label: "US-25 — Gerber Village" },
-  { id: 4203, label: "Airport Rd — Fanning Bridge Rd" },
+  { id: 5131, label: "I-26 MM53 — Upward Rd", priority: true },
+  { id: 5264, label: "I-26 MM54.2 — US-25" },
+  { id: 6102, label: "I-26 MM51.5 — Tracy Grove Rd" },
+  { id: 4878, label: "I-26 MM49 — US-64" },
+  { id: 5265, label: "I-26 MM59 — Holbert Cove Rd" },
+  { id: 6119, label: "I-26 MM48.2" },
+  { id: 4877, label: "I-26 MM48" },
+  { id: 6097, label: "I-26 MM46.2" },
+  { id: 5253, label: "US-176 — Upward Rd" },
+  { id: 4867, label: "US-176 — US-25 BUS" },
+  { id: 4873, label: "US-64 E — US-25 BUS S" },
+  { id: 4872, label: "US-64 — Linda Vista Dr" },
 ];
 
 const CAMERA_API_URL = "/api/cameras";
@@ -221,6 +224,9 @@ async function refreshCameraMeta() {
 
 function init() {
   const grid = document.getElementById("camera-grid");
+  const feedCount = document.querySelector(".feed-count");
+  if (feedCount) feedCount.textContent = `${CAMERAS.length} FEEDS`;
+
   CAMERAS.forEach((cam, index) => {
     grid.appendChild(buildTile(cam, index));
   });

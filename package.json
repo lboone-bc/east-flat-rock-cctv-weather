@@ -1,9 +1,13 @@
 {
-  "name": "cctv-weather-wall",
+  "name": "east-flat-rock-cctv-weather",
   "private": true,
   "version": "0.1.0",
-  "description": "Single-page CCTV + weather wall for a TV monitor: NC DOT I-26/US-25 traffic cameras near Arden, NC plus live weather and radar. Static HTML/CSS/JS + one Worker, deployed free on Cloudflare Workers (static assets).",
+  "description": "Single-page CCTV + weather wall for a TV monitor: the closest NC DOT traffic cameras to East Flat Rock, NC plus live weather and radar centered on 103 Education Dr.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
+    "check": "node scripts/verify-config.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

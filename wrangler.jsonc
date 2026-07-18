@@ -1,6 +1,8 @@
 {
-  "name": "cctv-weather-wall",
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "east-flat-rock-cctv-weather",
   "compatibility_date": "2026-07-11",
+  "keep_vars": true,
   "main": "src/worker.js",
   "assets": {
     "directory": "./public",

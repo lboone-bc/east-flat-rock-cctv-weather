@@ -1,9 +1,16 @@
-// Weather + radar for Arden, NC using the free National Weather Service API
-// (api.weather.gov, no key required) and RainViewer's free public radar
-// tile API (attribution required — see index.html).
+// Weather + radar centered on 103 Education Dr, Flat Rock, NC using the free
+// National Weather Service API (api.weather.gov, no key required) and
+// RainViewer's free public radar tile API (attribution required — see
+// index.html). Coordinates are an exact point-address geocode; see README.md
+// and REFERENCE_INDEX.md for the selection record.
 
-const ARDEN_LAT = 35.4429;
-const ARDEN_LON = -82.4832;
+const LOCATION = Object.freeze({
+  label: "East Flat Rock, NC",
+  lat: 35.294292,
+  lon: -82.398257,
+  nwsPoint: "35.2943,-82.3983",
+  radarZoom: 8,
+});
 
 const WEATHER_REFRESH_MS = 12 * 60_000; // current conditions + forecast
 const RADAR_FRAMES_REFRESH_MS = 5 * 60_000; // new radar frame list from RainViewer
@@ -46,7 +53,7 @@ async function updateCurrentConditions(pointMeta) {
     const iconUrl = p.icon || null;
 
     container.innerHTML = `
-      <h2>Arden, NC</h2>
+      <h2>${LOCATION.label}</h2>
       <div class="current-body">
         ${iconUrl ? `<img class="condition-icon" src="${iconUrl}" alt="${desc}" />` : ""}
         <div class="current-main">
@@ -63,7 +70,7 @@ async function updateCurrentConditions(pointMeta) {
     chip.textContent = tempF != null ? `${tempF}°F · ${desc}` : desc;
   } catch (err) {
     console.warn("Current conditions fetch failed:", err);
-    container.innerHTML = `<h2>Arden, NC</h2><div class="desc">Current conditions unavailable</div>`;
+    container.innerHTML = `<h2>${LOCATION.label}</h2><div class="desc">Current conditions unavailable</div>`;
   }
 }
 
@@ -114,7 +121,10 @@ async function updateForecast(pointMeta) {
 
 async function updateWeather() {
   try {
-    const pointMeta = await fetchJson(`https://api.weather.gov/points/${ARDEN_LAT},${ARDEN_LON}`);
+    // NWS limits point precision to four decimals and redirects more precise
+    // requests. Use its canonical precision directly while keeping the exact
+    // county address point for the radar center/marker.
+    const pointMeta = await fetchJson(`https://api.weather.gov/points/${LOCATION.nwsPoint}`);
     await Promise.all([updateCurrentConditions(pointMeta), updateForecast(pointMeta)]);
   } catch (err) {
     console.warn("Weather point lookup failed:", err);
@@ -138,7 +148,7 @@ function initRadarMap() {
     touchZoom: false,
     boxZoom: false,
     keyboard: false,
-  }).setView([ARDEN_LAT, ARDEN_LON], 8);
+  }).setView([LOCATION.lat, LOCATION.lon], LOCATION.radarZoom);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd",
@@ -152,7 +162,7 @@ function initRadarMap() {
     className: "radar-label-layer",
   }).addTo(radarMap);
 
-  L.circleMarker([ARDEN_LAT, ARDEN_LON], {
+  L.circleMarker([LOCATION.lat, LOCATION.lon], {
     radius: 6,
     color: "#dceeff",
     weight: 2,
@@ -168,7 +178,7 @@ function initRadarMap() {
   // map's size/center in sync with its actual rendered container.
   const resizeObserver = new ResizeObserver(() => {
     radarMap.invalidateSize();
-    radarMap.setView([ARDEN_LAT, ARDEN_LON], radarMap.getZoom());
+    radarMap.setView([LOCATION.lat, LOCATION.lon], radarMap.getZoom());
   });
   resizeObserver.observe(document.getElementById("radar-map"));
 }

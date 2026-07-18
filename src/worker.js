@@ -9,22 +9,22 @@
 
 // DriveNC's official Cameras API uses a numeric `Id` per camera — the GUIDs
 // used in drivenc.gov's public viewer-page URLs do NOT appear anywhere in
-// this API's data. These Ids were matched by cross-referencing camera
-// location names/coordinates against the full API dump (see README).
+// this API's data. These Ids were selected by calculating straight-line
+// distance from 103 Education Dr against the full API dump (see README).
 // Confirmed field: Views[0].VideoUrl is a live HLS (.m3u8) stream.
 const WANTED_CAMERA_IDS = [
-  4208, // I-26 MM37 — Long Shoals Rd (priority)
-  4839, // I-26 MM35
-  6120, // I-26 MM36
-  5269, // I-26 MM39 (nearest live camera to MM39; exact MM39 unit has no video feed)
-  4210, // I-26 MM40
-  4868, // I-26 MM41
-  4876, // I-26 MM44 — US-25
-  6101, // I-26 MM45
-  4221, // US-25 — Airport Rd
-  4224, // US-25 — Long Shoals Rd
-  4223, // US-25 — Gerber Village
-  4203, // Airport Rd — Fanning Bridge Rd
+  5131, // I-26 MM53 — Upward Rd (priority)
+  5264, // I-26 MM54.2 — US-25
+  6102, // I-26 MM51.5 — Tracy Grove Rd
+  4878, // I-26 MM49 — US-64
+  5265, // I-26 MM59 — Holbert Cove Rd
+  6119, // I-26 MM48.2
+  4877, // I-26 MM48
+  6097, // I-26 MM46.2
+  5253, // US-176 — Upward Rd
+  4867, // US-176 — US-25 BUS
+  4873, // US-64 E — US-25 BUS S (API Roadway incorrectly says US-66)
+  4872, // US-64 — Linda Vista Dr (API Roadway incorrectly says US-65)
 ];
 
 const CACHE_TTL_MS = 90_000;

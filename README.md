@@ -1,246 +1,222 @@
-# CCTV + Weather Wall — I-26 / US-25 (Arden, NC)
+# East Flat Rock CCTV + Weather Wall
 
-A single always-on webpage for a TV monitor: live NC DOT traffic cameras for
-the I-26 / US-25 corridor near Arden, NC, plus live weather (current
-conditions, 3-day forecast, animated radar) for Arden, NC. Static
-HTML/CSS/JS + one small Worker, deployed free on Cloudflare (Workers with
-static assets).
+An always-on TV dashboard for live conditions around **103 Education Dr,
+Flat Rock, NC 28731**. It preserves the original traffic-operations-console
+layout while moving every location-specific input to East Flat Rock:
 
-## Status / open TODOs
+- live weather and a radar map centered on the address;
+- the eight closest enabled interstate cameras, nearest first;
+- the closest interstate camera as the large focus feed; and
+- the four closest enabled non-interstate road cameras in the bottom row.
 
-The DriveNC Cameras API has been called live with a real key and all 12
-cameras confirmed working — see [Cameras](#cameras) below for how the
-mapping was resolved. Remaining items:
+The app is static HTML/CSS/JavaScript plus one small Cloudflare Worker. The
+Worker protects the DriveNC API key, caches camera metadata, and serves the
+static assets.
 
-- [x] Confirmed `drivenc.gov/map/Cctv/{id}` viewer pages are iframe-embeddable
-      (no blocking `X-Frame-Options`/CSP) — verified visually via the local
-      fallback rendering. This is the path used whenever `/api/cameras`
-      hasn't responded yet or a stream fails to play.
-- [ ] Watch the wall run for a while and confirm 12 simultaneous HLS streams
-      don't overload whatever device is driving the TV (a low-power
-      stick/smart-TV browser may struggle — if so, consider showing fewer
-      live streams at once and cycling the rest, or capping video
-      resolution).
-- [x] `DRIVENC_API_KEY` is set as a secret on the deployed Worker — see the
-      **"Secrets keep disappearing"** note below, this needs periodic
-      re-checking, not just a one-time setup step.
+## Work plan / rollout
 
-Until the key is set in the deployed environment, every tile falls back to
-a scaled-down `<iframe>` of its public `drivenc.gov` viewer page, so the
-wall is functional even without it. Individual cameras also fall back
-per-tile, automatically, whenever their HLS stream fails to start playing
-within ~18s (NCDOT's streaming servers have brief, self-resolving blips even
-on healthy cameras — confirmed by direct testing, not a bug here) — a
-90-second refresh cycle retries and upgrades them back to live video once
-the stream recovers.
+- [x] Resolve and cross-check the address center.
+- [x] Rank the live DriveNC inventory by straight-line distance.
+- [x] Verify all 12 selected HLS manifests, current media segments, and
+      iframe fallback pages.
+- [x] Update weather, radar, camera ordering, branding, Worker identity, and
+      configuration integrity checks.
+- [x] Add durable root guidance in `AGENTS.md` and `REFERENCE_INDEX.md`.
+- [x] Create the dedicated GitHub repository and change the local `origin` to
+      `lboone-bc/east-flat-rock-cctv-weather`.
+- [x] Create the dedicated Cloudflare service/build target,
+      `east-flat-rock-cctv-weather`.
+- [ ] Set/confirm `DRIVENC_API_KEY`, confirm the production build, and record
+      the actual deployed URL in this README and `REFERENCE_INDEX.md`.
+- [ ] Soak-test 12 simultaneous HLS feeds on the final TV/browser hardware.
 
-### Secrets keep disappearing — known Cloudflare bug
+> [!IMPORTANT]
+> This checkout is now isolated from the original Arden deployment: `origin`
+> points to `lboone-bc/east-flat-rock-cctv-weather`, and Wrangler targets the
+> Cloudflare service `east-flat-rock-cctv-weather`. Keep those identities
+> aligned so future deploys cannot overwrite the Arden wall.
 
-`DRIVENC_API_KEY` has been wiped from the Worker's dashboard settings
-multiple times during development, each time reverting every camera to the
-iframe fallback (`/api/cameras` starts returning `[]` with **HTTP 200** —
-that specific response, empty array + status 200 rather than 502, only
-comes from the `if (!key)` branch in `src/worker.js`, so it's a reliable
-signal the secret is missing).
+## Canonical location
 
-This matches a known, still-open Cloudflare issue: their built-in Git
-integration (the auto-deploy-on-push pipeline this project uses) can wipe
-dashboard-set secrets on deploy, even though a normal `wrangler deploy` is
-documented to leave secrets untouched. See
-[cloudflare/workers-sdk#8871](https://github.com/cloudflare/workers-sdk/issues/8871).
-There's no confirmed permanent fix as of this writing.
+| Field | Value |
+|---|---|
+| Address | 103 Education Dr, Flat Rock, NC 28731 |
+| Display locality | East Flat Rock, NC |
+| Center | `35.294292, -82.398257` |
+| County | Henderson County |
+| NWS grid | `GSP/62,62` |
+| NWS radar station | `KGSP` |
+| Radar zoom | `8` |
 
-**If cameras suddenly all show the iframe fallback again:**
+The center is the
+[active Henderson County address-point record](https://gisweb.hendersoncountync.gov/arcgis/rest/services/Addresses/MapServer/0/query?where=Add_Number%3D103%20AND%20UPPER%28St_Name%29%3D%27EDUCATION%27&outFields=REID%2CFullAddress%2CStatus%2CMSAGComm%2CPost_Comm%2CPost_Code%2CLong%2CLat%2CInc_Muni%2CJURISDICTION%2CSOURCE%2Caddress_last_edited_date&returnGeometry=true&outSR=4326&f=pjson),
+rounded to six decimal places. An Esri point-address match and the U.S. Census
+geocoder were used as independent cross-checks; all three points produce the
+same camera ordering. [NWS MapClick](https://forecast.weather.gov/MapClick.php?lat=35.2943&lon=-82.3983)
+labels the point East Flat Rock, even though the NWS API's `relativeLocation`
+field reports Hendersonville. The UI intentionally uses **East Flat Rock,
+NC**.
 
-1. Check `https://cctv-weather.lboone.workers.dev/api/cameras` — `[]` with
-   HTTP 200 confirms the secret is gone (give it ~10s after any dashboard
-   change to propagate before concluding it's actually missing).
-2. Re-add it: Cloudflare dashboard → the `cctv-weather` Worker → **Settings
-   → Variables and Secrets → Add** → Type **Secret**, Name
-   `DRIVENC_API_KEY`, paste the value → **Deploy**.
-3. If this keeps recurring often enough to be painful, the more durable fix
-   is to stop using Cloudflare's dashboard Git integration for deploys and
-   instead deploy via a self-managed GitHub Actions workflow
-   (`cloudflare/wrangler-action` running a real `wrangler deploy`, with a
-   `CLOUDFLARE_API_TOKEN` GitHub Actions secret) — that path is documented
-   to actually preserve secrets. Not set up yet; ask if this should be done.
+## Camera selection
 
-### How the camera IDs were resolved
+The roster was rebuilt from all 1,155 records returned by the live DriveNC
+Cameras API on **2026-07-18**. Selection rules are deliberately reproducible:
 
-The GUIDs from the original drivenc.gov URLs (e.g. `07a325cd-ac00-...`)
-**do not appear anywhere** in the DriveNC Cameras API response — that GUID
-scheme belongs only to the public site's client-side router. The API
-identifies cameras by a numeric `Id` instead. The 12 cameras above were
-matched by pulling the full API dataset (1,153 cameras) and cross-referencing
-each requested camera's road/mile-marker/cross-street against the API's
-`Location`, `Roadway`, `Direction`, and lat/lon fields for Buncombe and
-Henderson counties. Confirmed via a live `curl`:
+1. Keep cameras whose first view is enabled and exposes an HLS URL.
+2. Calculate Haversine distance from the canonical center, using an Earth
+   radius of 3,958.7613 miles.
+3. Sort interstate (`I-*`) cameras separately and take the closest eight.
+4. Exclude interstates from the remaining pool and take the closest four
+   highway/freeway/road cameras.
+5. Put the closest interstate first with `priority: true`; preserve the rest
+   in nearest-first order. DOM order is a layout contract.
 
-- Each camera's `Views[0].VideoUrl` is a working, publicly-reachable **HLS
-  (.m3u8) live stream** (no auth required) — e.g.
-  `https://cfase01.services.ncdot.gov:8887/chan-5378_l/index.m3u8` for I-26
-  MM37. `src/worker.js` and `public/cameras.js` were updated accordingly
-  (`renderHlsStream()` uses native HLS on Safari, `hls.js` everywhere else).
-- The exact "MM39" camera unit (Id 4851) has no video feed populated: the
-  nearest live camera (`CCTV13-I26-39.6E`, Id 5269) was used instead.
-- The public DriveNC URL `https://www.drivenc.gov/2da52ce8-5049-4024-8a6d-04b949ca9daa`
-  corresponds to `CCTV13-I26-35M` (Id 4839) in the Cameras API; the GUID
-  itself is still only a public-site route identifier.
+### Eight closest interstate feeds
+
+| Rank | Label | DriveNC ID | Distance | DriveNC location | Status |
+|---:|---|---:|---:|---|---|
+| **1 / focus** | **I-26 MM53 — Upward Rd** | `5131` | 0.510 mi | `CCTV14-I26-53W_UPWARD` | ✅ Live HLS |
+| 2 | I-26 MM54.2 — US-25 | `5264` | 0.806 mi | `CCTV14-I26-54.2S_US25` | ✅ Live HLS |
+| 3 | I-26 MM51.5 — Tracy Grove Rd | `6102` | 1.900 mi | `CCTV14-I26-51.5W_TRACYGROVE` | ✅ Live HLS |
+| 4 | I-26 MM49 — US-64 | `4878` | 3.997 mi | `CCTV14-I26-49W_US64` | ✅ Live HLS |
+| 5 | I-26 MM59 — Holbert Cove Rd | `5265` | 5.053 mi | `CCTV14-I26-59N_HOLBERTCOVE` | ✅ Live HLS |
+| 6 | I-26 MM48.2 | `6119` | 5.642 mi | `CCTV14-I26-48.2E` | ✅ Live HLS |
+| 7 | I-26 MM48 | `4877` | 5.663 mi | `CCTV14-I26-48W` | ✅ Live HLS |
+| 8 | I-26 MM46.2 | `6097` | 7.557 mi | `CCTV14-I26-46.2E` | ✅ Live HLS |
+
+The next interstate feed is ID `6101`, 8.578 miles away, which confirms the
+cutoff. The MM59/Holbert Cove feed is in Polk County, so the operations header
+correctly reflects both Henderson and Polk counties.
+
+### Four closest non-interstate feeds — bottom row
+
+| Rank | Label | DriveNC ID | Distance | DriveNC location | Status |
+|---:|---|---:|---:|---|---|
+| 1 | US-176 — Upward Rd | `5253` | 1.739 mi | `CCTV14-US176_UpwardRd` | ✅ Live HLS |
+| 2 | US-176 — US-25 BUS | `4867` | 3.523 mi | `CCTV14-US176-US25BUS` | ✅ Live HLS |
+| 3 | US-64 E — US-25 BUS S | `4873` | 3.893 mi | `CCTV14-US64-E_US25BUS_S` | ✅ Live HLS |
+| 4 | US-64 — Linda Vista Dr | `4872` | 3.908 mi | `CCTV14-US64-LINDAVISTA` | ✅ Live HLS |
+
+DriveNC's raw `Roadway` values for IDs `4873` and `4872` incorrectly say
+`US-66` and `US-65`; their official `Location`/`Description` fields identify
+US-64. The labels use those location fields. The next eligible non-interstate
+feed is ID `4874`, 3.952 miles away.
+
+Every selected master manifest and current media segment returned HTTP 200
+during verification. Every fallback page also returned HTTP 200 without an
+`X-Frame-Options` or frame-blocking CSP header. Fallback URL template:
+`https://www.drivenc.gov/map/Cctv/{id}`.
+
+To change the roster, edit `CAMERAS` in `public/cameras.js` and
+`WANTED_CAMERA_IDS` in `src/worker.js`, keeping the numeric IDs and order
+identical. Run `npm run check` afterward. DriveNC's numeric API ID—not a GUID
+from an old public route—is the canonical identifier.
+
+## Layout contract
+
+The camera area is a four-column dense grid. The first camera is a 3×3 hero;
+the remaining seven interstate feeds fill around and immediately below it;
+the final four non-interstate feeds form the last complete row. The arithmetic
+is fixed: 9 hero cells + 11 small cells = 20 cells = five rows × four columns.
+
+Preserve the camera order and the `.camera-tile.priority` 3×3 rule unless a
+layout redesign is intentional. The TV design otherwise remains the original:
+near-black panels, scanline/vignette overlay, amber focus treatment, cyan
+weather instrumentation, and green/red live/error status dots.
 
 ## Architecture
 
-```
+```text
 Browser (TV) ──> public/index.html / style.css / cameras.js / weather.js
                      │                              │
-                     │ GET /api/cameras              │ direct fetch (no key needed)
+                     │ GET /api/cameras              │ direct fetch
                      ▼                              ▼
-              src/worker.js                  api.weather.gov (NWS)
-        (Cloudflare Worker, handles           api.rainviewer.com (radar)
-         /api/cameras itself, otherwise
-         falls through to static assets)
+              src/worker.js                  api.weather.gov
+        (proxy + 90-second cache)             RainViewer radar API
                      │
-                     │ GET .../get/cameras?key=... (server-side only)
+                     │ keyed server-side request
                      ▼
               DriveNC Cameras API
 ```
 
-- **Deployment model:** this repo deploys as a single Cloudflare **Worker
-  with static assets** (`wrangler.jsonc`: `main: src/worker.js`,
-  `assets.directory: ./public`), not the older Pages-Functions
-  (`/functions` directory) convention. Cloudflare's Git-integration build
-  pipeline for this project runs `npx wrangler deploy`, which needs exactly
-  this shape — a single entry-point script plus an assets directory — so
-  don't reintroduce a `/functions` folder expecting file-based routing; add
-  new server routes as branches inside `src/worker.js`'s `fetch()` instead.
-- **Cameras** come from DriveNC's official Cameras REST API, called from
-  `src/worker.js` so the API key never reaches the browser and so repeated
-  page refreshes across however many TVs are running this don't exceed
-  DriveNC's **10 requests / 60 seconds** rate limit — the Worker caches the
-  upstream response for 90 seconds.
-- **Weather** (current conditions + forecast) comes straight from the client
-  to `api.weather.gov` (NWS) — free, no API key. Flow: `/points/{lat},{lon}`
-  → forecast URL + nearest observation station → `/observations/latest`.
-- **Radar** uses RainViewer's free public Weather Maps API
-  (`api.rainviewer.com/public/weather-maps.json`) for tile URLs, rendered
-  with Leaflet on a CARTO dark basemap, animated over the last ~6 frames.
-  The frame list refreshes every 5 minutes, while the on-screen animation
-  advances every 600ms. RainViewer's free tier is for personal/small-scale
-  use and requires the attribution link that's already in `index.html` —
-  don't remove it.
-- **Weather refresh cadence:** current conditions and forecast reload every
-  12 minutes from the browser.
-- No framework/build step for the front end. It's `public/index.html` +
-  `public/style.css` + two ES modules (`public/cameras.js`,
-  `public/weather.js`, the latter loading Leaflet + hls.js from CDNs) plus
-  one Worker script for the DriveNC proxy. Kept intentionally simple since
-  this just needs to run unattended on a TV.
+- `src/worker.js` handles `GET /api/cameras` and delegates all other requests
+  to the static `ASSETS` binding.
+- The Worker caches the upstream camera metadata for 90 seconds, protecting
+  DriveNC's 10 requests / 60 seconds limit and keeping the key out of the
+  browser.
+- Current conditions and the three-day forecast refresh every 12 minutes via
+  the NWS point metadata and its nearest observation station.
+- RainViewer supplies the most recent six radar frames. The frame list refreshes
+  every five minutes and animates every 600 ms. Leaflet and `hls.js` are loaded
+  by `public/index.html` from CDNs.
+- The front end has no framework or build step.
 
-## Design
+## Local development
 
-Styled as a DOT traffic-operations console rather than a generic dashboard:
-near-black background with a faint blueprint grid + CRT scanline overlay,
-HUD-style corner-bracket frames on every camera tile and the radar panel
-(cyan by default, amber on the priority tile, red on error), a glowing
-instrument-style temperature readout, and a departure-board dot-leader
-layout for the 3-day forecast. Typography is Overpass — the FHWA highway
-signage typeface family — for display text, Overpass Mono for all data
-readouts. Palette roles are intentionally not evenly distributed: amber
-marks the header accent/priority feed/alerts, cyan marks
-weather/radar/default HUD elements, green and red are reserved strictly for
-live/error status dots. Camera tiles fade in with a staggered "boot
-sequence" on load. The camera grid is 4 columns of true-16:9 tiles matching
-the source video's aspect ratio (so `object-fit: cover` has no edges to crop),
-with the priority I-26 / Long Shoals feed rendered as a large 3×3 hero
-anchored top-left and the remaining 11 feeds packed around it with no empty
-cells. The secondary/tertiary text colors are kept deliberately light so the
-eyebrow, panel headers, and forecast text stay legible from across a room on
-the TV. See `public/style.css` for the full system.
-
-## Cameras
-
-Priority camera (rendered as a large 3×3 hero, top-left of the grid):
-
-| Label | DriveNC Id | Live stream |
-|---|---|---|
-| **I-26 MM37 — Long Shoals Rd** | `4208` | ✅ HLS confirmed |
-
-Remaining cameras (all confirmed with live HLS streams as of this writing):
-
-| Label | DriveNC Id | Notes |
-|---|---|---|
-| I-26 MM35 | `4839` | resolved from public DriveNC GUID `2da52ce8-5049-4024-8a6d-04b949ca9daa` |
-| I-26 MM36 | `6120` | |
-| I-26 MM39 | `5269` | nearest live camera; exact MM39 unit has no video feed |
-| I-26 MM40 | `4210` | |
-| I-26 MM41 | `4868` | |
-| I-26 MM44 — US-25 | `4876` | |
-| I-26 MM45 | `6101` | |
-| US-25 — Airport Rd | `4221` | |
-| US-25 — Long Shoals Rd | `4224` | |
-| US-25 — Gerber Village | `4223` | |
-| Airport Rd — Fanning Bridge Rd | `4203` | |
-
-Viewer page (iframe fallback) for any camera: `https://www.drivenc.gov/map/Cctv/{id}`.
-
-To add/remove/reorder cameras: edit `CAMERAS` in `public/cameras.js` and
-`WANTED_CAMERA_IDS` in `src/worker.js` (both need the numeric DriveNC `Id`;
-keep them in sync). Set `priority: true` on at most one camera in
-`public/cameras.js` for the large tile. To find a new camera's Id, query the
-DriveNC API with a valid key and search by `Location`/`Roadway`/lat-lon —
-there's no reliable way to derive it from a drivenc.gov viewer URL.
-
-## Setup
-
-### 1. DriveNC developer API key
-
-1. Register a free account and request a Cameras API key at
-   <https://www.drivenc.gov/developers/doc>.
-2. Don't put the key in any file in this repo. It's supplied as an
-   environment variable (see below).
-
-### 2. Local development
+Requirements: Node.js 22+ and a free DriveNC Cameras API key.
 
 ```bash
-npm ci                           # or npm install if updating dependencies
-cp .dev.vars.example .dev.vars   # then fill in DRIVENC_API_KEY
-npm run dev                      # wrangler dev, serves the Worker + static assets locally
+npm ci
+cp .dev.vars.example .dev.vars
+# Put DRIVENC_API_KEY in .dev.vars; never commit this ignored file.
+npm run check
+npm run dev
 ```
 
-(`.dev.vars` is git-ignored — see `.dev.vars.example` for the expected
-variable name.)
+Without a key, `/api/cameras` returns `[]` and every tile uses its public
+DriveNC iframe fallback. With a key, each tile upgrades to HLS and falls back
+individually if playback does not begin within about 18 seconds. Metadata is
+retried every 90 seconds.
 
-### 3. Deploy — Cloudflare
+## Cloudflare deployment
 
-This repo is already connected to Cloudflare's Git integration
-(`lboone-bc/cctv-weather` → a Workers project) and deploys on every push to
-`main` by running `npx wrangler deploy`, which `wrangler.jsonc` now points at
-`src/worker.js` + `./public` assets, so no dashboard build-settings changes
-should be needed. One thing to set:
+`wrangler.jsonc` is configured for a Worker named
+`east-flat-rock-cctv-weather` with static assets and `keep_vars: true`. The
+dedicated [GitHub repository](https://github.com/lboone-bc/east-flat-rock-cctv-weather)
+and [Cloudflare production build](https://dash.cloudflare.com/d1d2cef3519480a708037f7211b49b84/workers/services/view/east-flat-rock-cctv-weather/production/builds/f35bfc59-e036-412d-9f2b-33cf3ca69f5a)
+have been created for this replica.
 
-- In the Cloudflare dashboard, open the Worker's **Settings → Variables and
-  Secrets** and add `DRIVENC_API_KEY` as an encrypted secret (Production —
-  and Preview if you use preview deployments).
+1. Add or confirm the encrypted secret with
+   `npx wrangler secret put DRIVENC_API_KEY` or through **Settings → Variables
+   and Secrets** in the dashboard.
+2. Confirm the production build succeeds and record the actual `*.workers.dev`
+   URL here and in `REFERENCE_INDEX.md`.
+3. Verify `/api/cameras` returns all 12 IDs and leave the wall running on the
+   target display.
 
-To connect a fresh clone to a *new* Cloudflare project instead of the
-existing one: **Workers & Pages → Create → Import a repository**, point it
-at this repo — it will detect `wrangler.jsonc` and configure itself
-correctly with no extra build/deploy command overrides needed.
+The historic Cloudflare Git-integration variable-loss issue
+([workers-sdk#8871](https://github.com/cloudflare/workers-sdk/issues/8871)) was
+fixed by merged PR
+[#10865](https://github.com/cloudflare/workers-sdk/pull/10865) in October 2025.
+Current Wrangler documentation says secrets are not removed by deploys, and
+this project additionally sets `keep_vars: true` for dashboard-managed plain
+variables.
 
-### 4. Displaying on a TV
+If all feeds unexpectedly fall back, request `/api/cameras`. An empty array
+with HTTP 200 means `DRIVENC_API_KEY` is absent; HTTP 502 indicates an upstream
+request failure. Re-add the secret and allow a few seconds for propagation.
 
-Point the TV's browser (smart TV browser, Fire TV Stick/Silk browser,
-Chromecast with a kiosk tab, Raspberry Pi in kiosk mode, etc.) at the
-deployed `*.workers.dev` URL (or a custom domain mapped to it). The page is
-designed to fill the viewport with no scrolling (`overflow: hidden`) and
-refreshes its own data on intervals, so it's meant to just be left open.
+## Validation
 
-## Data sources & limits
+```bash
+npm run check
+npm run deploy -- --dry-run
+git diff --check
+```
 
-| Source | Used for | Key required | Notes |
+Before release, also verify the NWS point lookup, a current manifest and media
+segment for every feed, the iframe fallback with the key absent, and the full
+layout at 1920×1080. See `REFERENCE_INDEX.md` for the ownership map and full
+camera evidence.
+
+## Data sources
+
+| Source | Used for | Key | Notes |
 |---|---|---|---|
-| [DriveNC Cameras API](https://www.drivenc.gov/developers/doc) | Camera media URLs | Yes (free) | 10 req/60s — proxied + cached server-side in `src/worker.js` |
-| [api.weather.gov](https://www.weather.gov/documentation/services-web-api) (NWS) | Current conditions, 3-day forecast | No | Called directly from the browser |
-| [RainViewer Weather Maps API](https://www.rainviewer.com/api.html) | Radar tiles | No | Free for personal/small-scale use; attribution required and present in `index.html` |
-| [Leaflet](https://leafletjs.com/) | Radar map rendering | No | Loaded via CDN |
-| [CARTO dark basemap](https://carto.com/basemaps) | Radar map base tiles | No | Free tier, loaded via CDN |
-| [hls.js](https://github.com/video-dev/hls.js) | Playing NCDOT's HLS camera streams | No | Loaded via CDN; not needed on Safari/iOS, which play HLS natively |
+| [DriveNC Cameras API](https://www.drivenc.gov/help/endpoint/cameras) | Camera metadata and media URLs | Yes (server-side) | 10 requests / 60 seconds; Worker-cached |
+| [National Weather Service API](https://www.weather.gov/documentation/services-web-api) | Current conditions and forecast | No | Direct browser requests |
+| [RainViewer Weather Maps API](https://www.rainviewer.com/api.html) | Animated radar tiles | No | Attribution is required and present |
+| [Leaflet](https://leafletjs.com/) | Radar rendering | No | CDN |
+| [CARTO basemaps](https://carto.com/basemaps) | Radar base/labels | No | CDN |
+| [hls.js](https://github.com/video-dev/hls.js) | HLS playback outside Safari/iOS | No | CDN |
+| [Cloudflare Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/) | Worker deployment behavior | No | `keep_vars` reference |
