@@ -23,10 +23,12 @@ weather, radar, layout, or deployment behavior.
   1. eight closest enabled interstate cameras in the chosen display order
      MM53 (focus), MM59, MM54.2, MM51.5, MM49, MM48.2, MM48, MM46.2;
   2. four closest enabled non-interstate road cameras, nearest first.
-- Camera 1 is the only `priority: true` camera and must be the closest
-  interstate feed.
-- DOM order is functional. With the 4-column grid and 3×3 hero, entries 9–12
-  form the bottom row. Do not reorder except on explicit user direction.
+- Camera 1 is the only configured `priority: true` camera and must be the
+  closest interstate feed. At runtime, clicking another tile transfers the
+  single `priority` class to that tile without changing canonical DOM order.
+- DOM order is functional. In the initial/default layout, the 4-column grid
+  and 3×3 hero make entries 9–12 the bottom row. Do not reorder except on
+  explicit user direction.
 - Keep `CAMERAS` in `public/cameras.js` and `WANTED_CAMERA_IDS` in
   `src/worker.js` identical and in the same order. Run `npm run check` after
   every roster change.
@@ -40,8 +42,9 @@ weather, radar, layout, or deployment behavior.
 - DriveNC mislabels the raw `Roadway` for ID `4873` as `US-66` and ID `4872`
   as `US-65`. Their `Location`/`Description` fields and county road data show
   US-64; preserve the friendly US-64 labels unless the upstream data changes.
-- Preserve `.camera-tile.priority` as a 3×3 tile and the four-column dense grid
-  unless the user explicitly requests a layout redesign.
+- Preserve `.camera-tile.priority` as a top-left 3×3 tile, the four-column
+  dense grid, and click-to-feature behavior unless the user explicitly
+  requests a layout redesign.
 
 ## Deployment safety
 

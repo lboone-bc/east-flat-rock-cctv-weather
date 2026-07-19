@@ -6,8 +6,10 @@ layout while moving every location-specific input to East Flat Rock:
 
 - live weather and a radar map centered on the address;
 - the eight closest enabled interstate cameras in the chosen operational order;
-- the closest interstate camera as the large focus feed; and
-- the four closest enabled non-interstate road cameras in the bottom row.
+- the closest interstate camera as the initial large focus feed, with any
+  camera selectable as the feature by clicking its tile; and
+- the four closest enabled non-interstate road cameras in the default bottom
+  row.
 
 The app is static HTML/CSS/JavaScript plus one small Cloudflare Worker. The
 Worker protects the DriveNC API key, caches camera metadata, and serves the
@@ -117,15 +119,19 @@ from an old public route—is the canonical identifier.
 
 ## Layout contract
 
-The camera area is a four-column dense grid. The first camera is a 3×3 hero;
-the remaining seven interstate feeds fill around and immediately below it;
-the final four non-interstate feeds form the last complete row. The arithmetic
-is fixed: 9 hero cells + 11 small cells = 20 cells = five rows × four columns.
+The camera area is a four-column dense grid. The first camera starts as the
+3×3 hero; clicking any other tile transfers the hero treatment to that camera
+without rebuilding its media player or changing the canonical DOM order. The
+active hero is explicitly anchored at the top left, and the other 11 tiles
+dense-fill the remaining cells. In the default state, the final four
+non-interstate feeds form the last complete row. The arithmetic is fixed:
+9 hero cells + 11 small cells = 20 cells = five rows × four columns.
 
-Preserve the camera order and the `.camera-tile.priority` 3×3 rule unless a
-layout redesign is intentional. The TV design otherwise remains the original:
-near-black panels, scanline/vignette overlay, amber focus treatment, cyan
-weather instrumentation, and green/red live/error status dots.
+Preserve the camera order, click-to-feature interaction, and the
+`.camera-tile.priority` top-left 3×3 rule unless a layout redesign is
+intentional. The TV design otherwise remains the original: near-black panels,
+scanline/vignette overlay, amber focus treatment, cyan weather instrumentation,
+and green/red live/error status dots.
 
 ## Architecture
 
@@ -196,8 +202,9 @@ account connection as disconnected. Until the GitHub app is reauthorized,
    **2026-07-18**.
 2. Confirm the production build succeeds and keep the actual `*.workers.dev`
    URL here and in `REFERENCE_INDEX.md` current.
-3. Verify `/api/cameras` returns all 12 IDs and leave the wall running on the
-   target display.
+3. Verify `/api/cameras` returns all 12 IDs, click several small tiles to
+   confirm each replaces the feature without interrupting playback, and leave
+   the wall running on the target display.
 
 The historic Cloudflare Git-integration variable-loss issue
 ([workers-sdk#8871](https://github.com/cloudflare/workers-sdk/issues/8871)) was
@@ -223,9 +230,9 @@ git diff --check
 ```
 
 Before release, also verify the NWS point lookup, a current manifest and media
-segment for every feed, the iframe fallback with the key absent, and the full
-layout at 1920×1080. See `REFERENCE_INDEX.md` for the ownership map and full
-camera evidence.
+segment for every feed, the iframe fallback with the key absent, click-to-feature
+behavior, and the full layout at 1920×1080. See `REFERENCE_INDEX.md` for the
+ownership map and full camera evidence.
 
 ## Data sources
 

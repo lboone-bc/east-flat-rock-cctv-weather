@@ -14,12 +14,13 @@ for (const path of ["public/cameras.js", "public/weather.js", "src/worker.js"]) 
   assert.equal(result.status, 0, `${path} failed syntax validation:\n${result.stderr}`);
 }
 
-const [cameraSource, workerSource, weatherSource, indexSource, packageSource, lockSource, wranglerSource] =
+const [cameraSource, workerSource, weatherSource, indexSource, styleSource, packageSource, lockSource, wranglerSource] =
   await Promise.all([
     read("public/cameras.js"),
     read("src/worker.js"),
     read("public/weather.js"),
     read("public/index.html"),
+    read("public/style.css"),
     read("package.json"),
     read("package-lock.json"),
     read("wrangler.jsonc"),
@@ -52,6 +53,10 @@ assert.match(cameraSource, /const CAMERA_META_RETRY_MS = 10_000/);
 assert.match(cameraSource, /const HLS_RETRY_MS = 10_000/);
 assert.match(cameraSource, /const HLS_STALL_TIMEOUT_MS = 25_000/);
 assert.match(cameraSource, /Date\.now\(\) - playback\.lastProgressAt >= HLS_STALL_TIMEOUT_MS/);
+assert.match(cameraSource, /function setFeatureCamera\(nextFeature\)/);
+assert.match(cameraSource, /currentFeature\?\.classList\.remove\("priority"\)/);
+assert.match(cameraSource, /nextFeature\.classList\.add\("priority"\)/);
+assert.match(styleSource, /\.camera-tile\.priority\s*{\s*grid-area: 1 \/ 1 \/ span 3 \/ span 3;/);
 assert.match(workerSource, /"cache-control": "no-store"/);
 
 const packageJson = JSON.parse(packageSource);
@@ -65,5 +70,5 @@ assert.equal(wranglerJson.name, projectName);
 assert.equal(wranglerJson.keep_vars, true, "Dashboard-managed variables must survive deploys");
 
 console.log(
-  "Configuration verified: East Flat Rock center, 8+4 camera order, playback recovery, Worker sync, and project identity."
+  "Configuration verified: East Flat Rock center, 8+4 camera order, click-to-feature layout, playback recovery, Worker sync, and project identity."
 );

@@ -83,11 +83,11 @@ Camera/road references:
 
 | Concern | Source of truth | Synchronized consumers / notes |
 |---|---|---|
-| Browser roster, labels, focus, DOM order | `public/cameras.js` → `CAMERAS` | Must match Worker IDs; ordering controls layout |
+| Browser roster, labels, initial focus, DOM order | `public/cameras.js` → `CAMERAS` | Must match Worker IDs; runtime focus changes by class without reordering |
 | Worker allowlist | `src/worker.js` → `WANTED_CAMERA_IDS` | Must exactly match browser roster |
 | Address center, locality, radar zoom | `public/weather.js` → `LOCATION` | Visible static labels also live in `public/index.html` |
 | Page title, county, weather/radar labels | `public/index.html` | Keep aligned with `LOCATION.label` |
-| Grid/hero layout | `public/style.css` → `.cameras`, `.camera-tile.priority` | Four columns, 3×3 hero, dense placement |
+| Grid/hero layout | `public/style.css` → `.cameras`, `.camera-tile.priority`; `public/cameras.js` → `setFeatureCamera` | Four columns, top-left 3×3 hero, dense placement, click-to-feature |
 | Worker name/bindings/variable retention | `wrangler.jsonc` | New Worker identity; `keep_vars: true` |
 | Package name/runtime/check command | `package.json`, `package-lock.json` | Node 22+ |
 | Operations and rollout plan | `README.md` | Update after provisioning/deployment |
@@ -143,9 +143,11 @@ Release checks:
 3. Fetch each HLS master, its current media playlist, and a current segment.
 4. Confirm every numeric viewer fallback is iframe-embeddable.
 5. Confirm the NWS point resolves to `GSP/62,62`.
-6. Inspect at 1920×1080: focus camera first, seven remaining interstate
+6. Inspect at 1920×1080: initial focus camera first, seven remaining interstate
    feeds before the final four-camera bottom row, centered radar marker, no
-   scrolling, and legible labels.
+   scrolling, and legible labels. Click an interstate and a bottom-row tile;
+   each must become the sole top-left 3×3 feature without rebuilding playback
+   or changing DOM order.
 7. Repeat with no local key to verify all 12 fallbacks.
 
 External runtime/docs references:
