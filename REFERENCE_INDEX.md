@@ -74,13 +74,29 @@ Public fallback for any row:
 `https://www.drivenc.gov/map/Cctv/{numeric-id}`.
 
 Runtime recheck: on **2026-07-26**, the live DriveNC inventory still marked all
-12 views enabled and supplied the same HLS URLs, but every selected manifest
-returned HTTP 401 plus `WWW-Authenticate: Basic realm="XEngine"`. The numeric
-fallbacks returned HTTP 200 images (`image/jpeg` snapshots or an `image/png`
-no-feed placeholder). This is an
-upstream media-server authentication anomaly, not a valid use for a DriveNC
-account password or developer key. `src/worker.js` now health-gates HLS URLs
-server-side and returns the public image while a manifest is challenged.
+12 views enabled, but each unsigned HLS URL returned HTTP 401 plus
+`WWW-Authenticate: Basic realm="XEngine"`. DriveNC's working browser player
+does not send an account password to that challenge. It calls the public
+`/Camera/GetVideoUrl?imageId={numeric-id}` grant endpoint, posts the returned
+`token`, `sourceId`, and `systemSourceId` JSON to
+`https://vds.nc.insight-atms.com/api/SecureTokenUri/GetSecureTokenUriBySourceId`,
+and appends the returned `?token=...` suffix to the API HLS base URL. For a
+verified camera, that signed master, media playlist, and current MP4 segment
+all returned HTTP 200 without an authentication challenge. The official
+DriveNC bundle contains an optional 60-second renewal loop, but current
+DriveNC page resources set that option to false. One token remained live and
+advanced in the official player for more than 11 minutes. `src/worker.js`
+reproduces the public exchange server-side, validates/probes the result, caches
+healthy signed media per camera for five minutes, and retries only unavailable
+or playback-failed cameras after 10 seconds; no account password or browser
+session is stored. Eleven of the 12 selected East Flat Rock feeds passed
+signed master/media/current-segment checks. ID `5253` received a valid grant
+and token, but its signed master returned HTTP 404, consistent with its public
+no-live-camera placeholder.
+
+The numeric fallbacks remained HTTP 200 images (`image/jpeg` snapshots or an
+`image/png` no-feed placeholder) and remain the per-tile degraded mode when
+signing or playback is unavailable.
 
 Camera/road references:
 
@@ -106,11 +122,17 @@ Camera/road references:
 
 | Behavior | Value | Owner |
 |---|---:|---|
-| Browser camera metadata refresh | 90 seconds | `public/cameras.js` |
-| Empty/error camera metadata retry | 10 seconds | `public/cameras.js` |
 | Worker camera cache | 90 seconds | `src/worker.js` |
+| Browser camera metadata refresh | 90 seconds normally; 10 seconds while a feed is unavailable | `public/cameras.js` |
+| Empty/error camera metadata retry | 10 seconds | `public/cameras.js` |
+| Worker signed HLS URL renewal | 5 minutes while healthy; rate-limited per-camera check 10 seconds after playback failure | `src/worker.js`, requested by `public/cameras.js` |
+| Worker signing burst control | At most 3 cameras concurrently; HTTP 429 retries after 250 ms and 750 ms | `src/worker.js` |
+| Worker per-invocation signing budget | At most 4 due cameras, selected with a fair rotating cursor; deferred tiles retry progressively after 10 seconds to stay below the Free-plan 50 external-subrequest limit | `src/worker.js`, `public/cameras.js` |
+| Overlapping camera API polls | One signing response at a time per Worker isolate; collisions receive retryable HTTP 503 `refresh-in-progress` | `src/worker.js` |
+| Worker DriveNC inventory timeout | 15 seconds; stale inventory remains eligible for signed validation | `src/worker.js` |
+| Browser camera API timeout | 60 seconds; current tiles are preserved before the 10-second recovery retry | `public/cameras.js` |
 | Worker HLS manifest health retry | 10 seconds while unavailable | `src/worker.js`, requested by `public/cameras.js` |
-| Browser-safe degraded media | DriveNC image snapshot/placeholder; no challenged HLS URL exposed | `src/worker.js`, `public/cameras.js` |
+| Browser-safe degraded media | DriveNC image snapshot/placeholder; no unsigned/challenged HLS URL exposed | `src/worker.js`, `public/cameras.js` |
 | HLS connection watchdog | 18 seconds | `public/cameras.js` |
 | HLS no-progress watchdog | 25 seconds | `public/cameras.js` |
 | HLS recovery retry | 10 seconds | `public/cameras.js` |
@@ -151,8 +173,10 @@ Release checks:
 
 1. Use Node 22+ for Wrangler.
 2. Confirm `GET /api/cameras` returns all 12 expected numeric IDs.
-3. Fetch each HLS master, its current media playlist, and a current segment;
-   when HLS is challenged, confirm `/api/cameras` suppresses its `videoUrl`.
+3. For every camera, fetch the public DriveNC grant, POST it to the secure-token
+   endpoint, and fetch the signed HLS master, current media playlist, and a
+   current segment. Confirm `/api/cameras` suppresses `videoUrl` if any signing
+   or manifest step fails.
 4. Confirm every numeric fallback returns an HTTP 200 `image/*` response and
    renders as an `<img>` without an authentication prompt.
 5. Confirm the NWS point resolves to `GSP/62,62`.
@@ -169,5 +193,7 @@ External runtime/docs references:
 - [RainViewer API](https://www.rainviewer.com/api.html)
 - [Leaflet](https://leafletjs.com/)
 - [hls.js](https://github.com/video-dev/hls.js)
+- DriveNC runtime grant: `https://www.drivenc.gov/Camera/GetVideoUrl?imageId={numeric-id}`
+- NCDOT secure-token service: `https://vds.nc.insight-atms.com/api/SecureTokenUri/GetSecureTokenUriBySourceId`
 - [Cloudflare Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)
 - [Cloudflare issue #8871](https://github.com/cloudflare/workers-sdk/issues/8871) and merged fix [PR #10865](https://github.com/cloudflare/workers-sdk/pull/10865)

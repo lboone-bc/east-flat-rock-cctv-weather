@@ -25,8 +25,9 @@ const CAMERAS = [
 ];
 
 const CAMERA_API_URL = "/api/cameras";
-const CAMERA_META_REFRESH_MS = 90_000; // how often we re-ask the proxy for fresh media URLs
+const CAMERA_META_REFRESH_MS = 90_000; // full camera inventory stays cached server-side for this long
 const CAMERA_META_RETRY_MS = 10_000; // recover quickly after a missing key or transient API failure
+const CAMERA_API_TIMEOUT_MS = 60_000;
 const HLS_RETRY_MS = 10_000;
 const HLS_CONNECT_TIMEOUT_MS = 18_000;
 const HLS_STALL_CHECK_MS = 5_000;
@@ -91,6 +92,7 @@ function setFeatureCamera(nextFeature) {
 }
 
 function disposeTileResources(tile) {
+  tile._streamUrl = null;
   const playback = tile._playbackState;
   if (playback) {
     playback.disposed = true;
@@ -138,7 +140,7 @@ function renderHlsStream(tile, streamUrl) {
   const existing = media.querySelector("video");
   if (
     existing &&
-    existing.dataset.src === streamUrl &&
+    tile._streamUrl === streamUrl &&
     tile._playbackState &&
     !tile._playbackState.disposed
   ) {
@@ -152,7 +154,7 @@ function renderHlsStream(tile, streamUrl) {
   video.muted = true;
   video.playsInline = true;
   video.crossOrigin = "anonymous";
-  video.dataset.src = streamUrl;
+  tile._streamUrl = streamUrl;
   media.appendChild(video);
 
   const playback = {
@@ -193,7 +195,10 @@ function renderHlsStream(tile, streamUrl) {
     if (retry) {
       tile._streamRetryTimer = setTimeout(() => {
         tile._streamRetryTimer = null;
-        refreshCameraMetaNow({ forceHealthCheck: true });
+        refreshCameraMetaNow({
+          forceHealthCheck: true,
+          cameraId: tile.dataset.id,
+        });
       }, HLS_RETRY_MS);
     }
   };
@@ -253,26 +258,54 @@ function renderHlsStream(tile, streamUrl) {
 
 let cameraMetaRefreshTimer = null;
 let cameraMetaRefreshInFlight = false;
+const pendingForcedCameraIds = new Set();
 
 function scheduleCameraMetaRefresh(delay, options = {}) {
   clearTimeout(cameraMetaRefreshTimer);
   cameraMetaRefreshTimer = setTimeout(() => refreshCameraMeta(options), delay);
 }
 
-async function refreshCameraMeta({ forceHealthCheck = false } = {}) {
-  if (cameraMetaRefreshInFlight) return;
+async function refreshCameraMeta({
+  forceHealthCheck = false,
+  cameraId = null,
+} = {}) {
+  const forceCameraId = String(cameraId ?? "");
+  const forceTargetIsValid =
+    forceHealthCheck &&
+    CAMERAS.some((camera) => String(camera.id) === forceCameraId);
+
+  if (cameraMetaRefreshInFlight) {
+    if (forceTargetIsValid) pendingForcedCameraIds.add(forceCameraId);
+    return;
+  }
   cameraMetaRefreshInFlight = true;
+  const controller = new AbortController();
+  const requestTimeout = setTimeout(
+    () => controller.abort(),
+    CAMERA_API_TIMEOUT_MS
+  );
   let payload = [];
   let metadataAvailable = false;
   try {
-    const url = forceHealthCheck ? `${CAMERA_API_URL}?refresh=1` : CAMERA_API_URL;
-    const res = await fetch(url, { cache: "no-store" });
+    const params = new URLSearchParams();
+    if (forceTargetIsValid) {
+      params.set("refresh", "1");
+      params.set("cameraId", forceCameraId);
+    }
+    const query = params.toString();
+    const url = query ? `${CAMERA_API_URL}?${query}` : CAMERA_API_URL;
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!res.ok) throw new Error(`camera API returned ${res.status}`);
     payload = await res.json();
     if (!Array.isArray(payload)) throw new Error("camera API returned an invalid payload");
     metadataAvailable = true;
   } catch (err) {
     console.warn("Camera metadata fetch failed; preserving the current tile state:", err);
+  } finally {
+    clearTimeout(requestTimeout);
   }
 
   try {
@@ -301,7 +334,9 @@ async function refreshCameraMeta({ forceHealthCheck = false } = {}) {
         if (data.videoUrl) {
           renderHlsStream(tile, data.videoUrl);
         } else {
-          renderImage(tile, data.imageUrl);
+          renderImage(tile, data.imageUrl, {
+            error: Boolean(data.retryHls),
+          });
         }
       } catch (err) {
         console.warn(`Failed to render camera ${id}:`, err);
@@ -310,19 +345,37 @@ async function refreshCameraMeta({ forceHealthCheck = false } = {}) {
     });
   } finally {
     cameraMetaRefreshInFlight = false;
+    const pendingCameraId = pendingForcedCameraIds.values().next().value;
+    if (pendingCameraId) {
+      pendingForcedCameraIds.delete(pendingCameraId);
+      refreshCameraMeta({
+        forceHealthCheck: true,
+        cameraId: pendingCameraId,
+      });
+      return;
+    }
+
     const hasLiveMedia = payload.some((camera) => camera?.videoUrl || camera?.imageUrl);
-    const shouldRetryHls = payload.some((camera) => camera?.retryHls);
-    scheduleCameraMetaRefresh(
-      hasLiveMedia && !shouldRetryHls ? CAMERA_META_REFRESH_MS : CAMERA_META_RETRY_MS,
-      { forceHealthCheck: shouldRetryHls }
-    );
+    const retryCamera = payload.find((camera) => camera?.retryHls);
+    const serverRefreshHints = payload
+      .map((camera) => Number(camera?.refreshAfterMs))
+      .filter((delay) => Number.isFinite(delay) && delay >= 1_000);
+    const nextRefreshDelay = hasLiveMedia
+      ? Math.min(CAMERA_META_REFRESH_MS, ...serverRefreshHints)
+      : CAMERA_META_RETRY_MS;
+    scheduleCameraMetaRefresh(nextRefreshDelay, {
+      forceHealthCheck: Boolean(retryCamera),
+      cameraId: retryCamera?.id ?? null,
+    });
   }
 }
 
-function refreshCameraMetaNow({ forceHealthCheck = false } = {}) {
-  if (cameraMetaRefreshInFlight) return;
+function refreshCameraMetaNow({
+  forceHealthCheck = false,
+  cameraId = null,
+} = {}) {
   clearTimeout(cameraMetaRefreshTimer);
-  refreshCameraMeta({ forceHealthCheck });
+  refreshCameraMeta({ forceHealthCheck, cameraId });
 }
 
 function init() {

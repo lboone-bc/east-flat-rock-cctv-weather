@@ -35,8 +35,10 @@ weather, radar, layout, or deployment behavior.
 - Use DriveNC numeric camera IDs. Do not infer IDs from legacy public GUIDs.
 - For a new proximity audit, start from the full live DriveNC API inventory,
   require `Views[0].Status === "Enabled"` plus a populated HLS URL, calculate
-  Haversine distance from the canonical center, and test both the current HLS
-  media segment and `https://www.drivenc.gov/map/Cctv/{id}` snapshot fallback.
+  Haversine distance from the canonical center, obtain the short-lived HLS
+  token through DriveNC's current public grant flow, and test the signed
+  master/media/segment plus
+  `https://www.drivenc.gov/map/Cctv/{id}` snapshot fallback.
 - Record the audit date, distance method, cutoff candidates, and any API data
   anomalies in both `README.md` and `REFERENCE_INDEX.md`.
 - DriveNC mislabels the raw `Roadway` for ID `4873` as `US-66` and ID `4872`
@@ -64,13 +66,31 @@ weather, radar, layout, or deployment behavior.
 - The absence of a key is an intentional degraded mode: `/api/cameras`
   returns `[]` and the browser uses the public image snapshot fallbacks.
 - Never store or use a DriveNC account username/password as an HLS credential.
-  NCDOT media servers may incorrectly return an `XEngine` HTTP Basic
-  challenge while DriveNC still marks a view enabled. Preserve the Worker-side
-  manifest health gate so challenged URLs never reach browser media elements.
-- Preserve camera self-healing: successful metadata refreshes every 90 seconds,
-  empty/error metadata retries after 10 seconds, and a feed that fails or makes
-  no media-time progress for 25 seconds falls back and retries after 10 seconds.
+  The raw API URL is unsigned and returns an `XEngine` HTTP Basic challenge;
+  DriveNC's own player instead calls
+  `/Camera/GetVideoUrl?imageId={numeric-id}`, posts that grant to the NCDOT
+  secure-token service, and appends the returned token suffix. Preserve this
+  Worker-side signing and manifest gate; never depend on browser cookies or
+  pass a challenged unsigned URL to a browser media element.
+- Preserve camera self-healing: camera inventory remains cached for 90 seconds,
+  healthy signed HLS URLs renew after five minutes or through a rate-limited
+  per-camera check 10 seconds after playback failure, empty/error metadata
+  retries after 10 seconds, the upstream inventory request aborts after 15
+  seconds, and the browser abandons a stuck camera API request after 60
+  seconds so neither in-progress guard can strand the wall. A feed that fails
+  or makes no media-time progress for 25 seconds falls back and retries after
+  10 seconds. The current DriveNC player disables its optional 60-second
+  renewal loop, and a live token was observed advancing for more than 11
+  minutes; do not turn that dormant loop into a global 60-second re-sign cycle.
   Fatal playback errors must still be handled after the first `playing` event.
+- Preserve the Free-plan subrequest budget: refresh no more than four due
+  camera signing flows in one `/api/cameras` invocation. A cold isolate
+  upgrades the remaining tiles through a fair rotating selection on the
+  10-second retry cadence, even when earlier feeds remain unavailable. This
+  leaves room under Cloudflare's 50 external-subrequest limit for both
+  configured HTTP 429 retries and manifest probes. Overlapping API polls must
+  receive the retryable `refresh-in-progress` response instead of duplicating
+  a signing burst.
 - Keep `/api/cameras` responses `Cache-Control: no-store`; the Worker already
   owns the upstream cache, and browser caching can strand a wall on stale
   pre-secret metadata.
@@ -85,10 +105,11 @@ npm run deploy -- --dry-run
 git diff --check
 ```
 
-For camera/location or playback changes, also verify the live NWS point, all
-selected HLS manifests and media segments, all public image fallbacks,
-advancing `video.currentTime` across every healthy HLS feed, and the 1920×1080
-layout. Use Node 22+ for Wrangler commands.
+For camera/location or playback changes, also verify the live NWS point, the
+public grant and secure-token exchange, all selected signed HLS masters/media
+playlists/current segments, all public image fallbacks, advancing
+`video.currentTime` across every healthy HLS feed, and the 1920×1080 layout.
+Use Node 22+ for Wrangler commands.
 
 ## Documentation contract
 
