@@ -243,8 +243,8 @@ have been created for this replica.
 
 Production wall: [east-flat-rock-cctv-weather.lboone.workers.dev](https://east-flat-rock-cctv-weather.lboone.workers.dev/)
 
-The current runtime was deployed directly with Wrangler on **2026-07-26** as
-version `1efc509f-b582-48ae-af07-4302f2b39d5a`. Cloudflare has the correct
+The signed-HLS runtime was deployed directly with Wrangler on **2026-07-26** as
+version `3bd74fe9-e6e1-4c29-b58c-94f099b482d8`. Cloudflare has the correct
 repository and production branch configured but currently reports its GitHub
 account connection as disconnected. Until the GitHub app is reauthorized,
 `git push` updates the repository but does not start a Cloudflare build.

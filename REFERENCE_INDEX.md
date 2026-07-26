@@ -152,7 +152,7 @@ Camera/road references:
 | Cloudflare Worker name | `east-flat-rock-cctv-weather` in `wrangler.jsonc` |
 | Cloudflare build | [Production build supplied 2026-07-18](https://dash.cloudflare.com/d1d2cef3519480a708037f7211b49b84/workers/services/view/east-flat-rock-cctv-weather/production/builds/f35bfc59-e036-412d-9f2b-33cf3ca69f5a) |
 | Actual deployed URL | [east-flat-rock-cctv-weather.lboone.workers.dev](https://east-flat-rock-cctv-weather.lboone.workers.dev/) |
-| Current Worker version | `1efc509f-b582-48ae-af07-4302f2b39d5a`, direct Wrangler deploy on 2026-07-26 |
+| Current Worker version | `3bd74fe9-e6e1-4c29-b58c-94f099b482d8`, signed-HLS direct Wrangler deploy on 2026-07-26 |
 | Production secret | `DRIVENC_API_KEY` confirmed as encrypted Worker secret on 2026-07-26 |
 | Git build connection | Repository/`main` configured; Cloudflare GitHub account connection currently disconnected and needs reauthorization |
 
