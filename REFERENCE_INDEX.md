@@ -1,6 +1,6 @@
 # Reference index — East Flat Rock CCTV + Weather Wall
 
-Last context audit: **2026-07-18**
+Last context audit: **2026-07-26**
 
 This file is the durable evidence and source-ownership index for the project.
 See `README.md` for setup and rollout steps; see `AGENTS.md` for change rules.
@@ -39,7 +39,7 @@ Selection snapshot: live DriveNC Cameras API, **2026-07-18 13:40 EDT**, 1,155
 records. Haversine distances use Earth radius 3,958.7613 miles and the
 canonical center. All selected records had `Views[0].Status = Enabled`, a
 populated `.m3u8` URL, a master and current media segment returning HTTP 200,
-and an iframe viewer returning HTTP 200 without frame-blocking headers.
+and a numeric fallback returning HTTP 200.
 The interstate set is distance-selected; wall positions after the focus feed
 use the explicit operational order MM59, MM54.2, MM51.5, MM49, MM48.2, MM48,
 MM46.2 rather than distance rank.
@@ -73,6 +73,15 @@ Cutoff checks:
 Public fallback for any row:
 `https://www.drivenc.gov/map/Cctv/{numeric-id}`.
 
+Runtime recheck: on **2026-07-26**, the live DriveNC inventory still marked all
+12 views enabled and supplied the same HLS URLs, but every selected manifest
+returned HTTP 401 plus `WWW-Authenticate: Basic realm="XEngine"`. The numeric
+fallbacks returned HTTP 200 images (`image/jpeg` snapshots or an `image/png`
+no-feed placeholder). This is an
+upstream media-server authentication anomaly, not a valid use for a DriveNC
+account password or developer key. `src/worker.js` now health-gates HLS URLs
+server-side and returns the public image while a manifest is challenged.
+
 Camera/road references:
 
 - [DriveNC Cameras API documentation](https://www.drivenc.gov/help/endpoint/cameras)
@@ -100,6 +109,8 @@ Camera/road references:
 | Browser camera metadata refresh | 90 seconds | `public/cameras.js` |
 | Empty/error camera metadata retry | 10 seconds | `public/cameras.js` |
 | Worker camera cache | 90 seconds | `src/worker.js` |
+| Worker HLS manifest health retry | 10 seconds while unavailable | `src/worker.js`, requested by `public/cameras.js` |
+| Browser-safe degraded media | DriveNC image snapshot/placeholder; no challenged HLS URL exposed | `src/worker.js`, `public/cameras.js` |
 | HLS connection watchdog | 18 seconds | `public/cameras.js` |
 | HLS no-progress watchdog | 25 seconds | `public/cameras.js` |
 | HLS recovery retry | 10 seconds | `public/cameras.js` |
@@ -140,15 +151,17 @@ Release checks:
 
 1. Use Node 22+ for Wrangler.
 2. Confirm `GET /api/cameras` returns all 12 expected numeric IDs.
-3. Fetch each HLS master, its current media playlist, and a current segment.
-4. Confirm every numeric viewer fallback is iframe-embeddable.
+3. Fetch each HLS master, its current media playlist, and a current segment;
+   when HLS is challenged, confirm `/api/cameras` suppresses its `videoUrl`.
+4. Confirm every numeric fallback returns an HTTP 200 `image/*` response and
+   renders as an `<img>` without an authentication prompt.
 5. Confirm the NWS point resolves to `GSP/62,62`.
 6. Inspect at 1920×1080: initial focus camera first, seven remaining interstate
    feeds before the final four-camera bottom row, centered radar marker, no
    scrolling, and legible labels. Click an interstate and a bottom-row tile;
    each must become the sole top-left 3×3 feature without rebuilding playback
    or changing DOM order.
-7. Repeat with no local key to verify all 12 fallbacks.
+7. Repeat with no local key to verify all 12 snapshot fallbacks.
 
 External runtime/docs references:
 

@@ -28,21 +28,95 @@ const WANTED_CAMERA_IDS = [
 ];
 
 const CACHE_TTL_MS = 90_000;
+const HLS_HEALTH_RETRY_MS = 10_000;
+const HLS_PROBE_TIMEOUT_MS = 8_000;
 
 // Module-level cache. Persists for the lifetime of a given Worker isolate —
 // not guaranteed across every request, but in practice avoids most redundant
 // upstream calls between the ~90s refresh cycles the front end uses.
-let cache = { data: null, fetchedAt: 0 };
+let cache = { source: null, data: null, fetchedAt: 0, healthCheckedAt: 0 };
+
+function snapshotUrl(id) {
+  return `https://www.drivenc.gov/map/Cctv/${id}`;
+}
 
 function extractMedia(camera) {
   const view = camera.Views?.[0] || {};
   return {
     id: camera.Id,
     videoUrl: view.VideoUrl || null, // live HLS (.m3u8) stream
-    imageUrl: null, // none of our selected cameras use a still-image feed; kept for completeness
-    viewerUrl: view.Url || null,
+    imageUrl: null,
+    viewerUrl: snapshotUrl(camera.Id),
     status: view.Status || "Unknown",
   };
+}
+
+async function probeHlsManifest(videoUrl) {
+  if (!videoUrl) return false;
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(videoUrl);
+  } catch {
+    return false;
+  }
+
+  if (
+    parsedUrl.protocol !== "https:" ||
+    parsedUrl.username ||
+    parsedUrl.password ||
+    !parsedUrl.pathname.toLowerCase().endsWith(".m3u8")
+  ) {
+    return false;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HLS_PROBE_TIMEOUT_MS);
+
+  try {
+    // Probe HLS server-side before exposing its URL to a browser. NCDOT media
+    // servers can return an HTTP Basic challenge even while DriveNC reports a
+    // view as enabled; sending that URL to a native <video> element opens a
+    // modal login prompt that normal DriveNC credentials cannot satisfy.
+    const response = await fetch(parsedUrl, {
+      headers: {
+        accept: "application/vnd.apple.mpegurl, application/x-mpegURL, */*;q=0.1",
+      },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+
+    const manifest = await response.text();
+    return manifest.trimStart().startsWith("#EXTM3U");
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveAvailableMedia(media) {
+  const hlsAvailable =
+    media.status === "Enabled" && (await probeHlsManifest(media.videoUrl));
+
+  if (hlsAvailable) {
+    return { ...media, mediaMode: "hls", retryHls: false };
+  }
+
+  return {
+    ...media,
+    videoUrl: null,
+    imageUrl: media.viewerUrl,
+    mediaMode: "snapshot",
+    retryHls: Boolean(media.videoUrl),
+  };
+}
+
+async function refreshMediaHealth(source) {
+  const data = await Promise.all(source.map(resolveAvailableMedia));
+  cache = { ...cache, data, healthCheckedAt: Date.now() };
+  return data;
 }
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
@@ -59,17 +133,19 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
   });
 }
 
-async function handleCamerasApi(env) {
+async function handleCamerasApi(env, { forceHealthCheck = false } = {}) {
   const now = Date.now();
 
-  if (cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
-    return jsonResponse(cache.data);
+  if (cache.source && cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
+    const healthCheckIsFresh = now - cache.healthCheckedAt < HLS_HEALTH_RETRY_MS;
+    if (!forceHealthCheck || healthCheckIsFresh) return jsonResponse(cache.data);
+    return jsonResponse(await refreshMediaHealth(cache.source));
   }
 
   const key = env.DRIVENC_API_KEY;
   if (!key) {
-    // No key configured yet: front end falls back to per-camera viewer-page
-    // iframes when this returns an empty array, so the wall stays usable.
+    // No key configured yet: the front end falls back to public DriveNC
+    // camera images when this returns an empty array, so the wall stays usable.
     return jsonResponse([]);
   }
 
@@ -83,16 +159,21 @@ async function handleCamerasApi(env) {
     const cameras = await upstream.json();
 
     const byId = new Map(cameras.map((camera) => [camera.Id, camera]));
-    const matched = WANTED_CAMERA_IDS.map((id) => byId.get(id))
+    const source = WANTED_CAMERA_IDS.map((id) => byId.get(id))
       .filter(Boolean)
       .map(extractMedia);
+    cache = { ...cache, source, fetchedAt: now };
+    const matched = await refreshMediaHealth(source);
 
-    cache = { data: matched, fetchedAt: now };
     return jsonResponse(matched);
-  } catch (err) {
+  } catch {
     // Serve stale cache if we have it rather than failing the whole tile grid.
     if (cache.data) return jsonResponse(cache.data);
-    return jsonResponse([], 502, { "x-camera-proxy-error": String(err) });
+    // Do not expose upstream URLs or error details because the DriveNC API key
+    // is carried in the server-side request URL.
+    return jsonResponse([], 502, {
+      "x-camera-proxy-error": "upstream-unavailable",
+    });
   }
 }
 
@@ -101,7 +182,9 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/cameras" && request.method === "GET") {
-      return handleCamerasApi(env);
+      return handleCamerasApi(env, {
+        forceHealthCheck: url.searchParams.get("refresh") === "1",
+      });
     }
 
     return env.ASSETS.fetch(request);

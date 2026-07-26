@@ -36,7 +36,7 @@ weather, radar, layout, or deployment behavior.
 - For a new proximity audit, start from the full live DriveNC API inventory,
   require `Views[0].Status === "Enabled"` plus a populated HLS URL, calculate
   Haversine distance from the canonical center, and test both the current HLS
-  media segment and `https://www.drivenc.gov/map/Cctv/{id}` fallback.
+  media segment and `https://www.drivenc.gov/map/Cctv/{id}` snapshot fallback.
 - Record the audit date, distance method, cutoff candidates, and any API data
   anomalies in both `README.md` and `REFERENCE_INDEX.md`.
 - DriveNC mislabels the raw `Roadway` for ID `4873` as `US-66` and ID `4872`
@@ -62,7 +62,11 @@ weather, radar, layout, or deployment behavior.
   docs, screenshots, or commands whose expanded values are displayed.
 - Node.js 22+ is required by the installed Wrangler version.
 - The absence of a key is an intentional degraded mode: `/api/cameras`
-  returns `[]` and the browser uses the public iframe fallbacks.
+  returns `[]` and the browser uses the public image snapshot fallbacks.
+- Never store or use a DriveNC account username/password as an HLS credential.
+  NCDOT media servers may incorrectly return an `XEngine` HTTP Basic
+  challenge while DriveNC still marks a view enabled. Preserve the Worker-side
+  manifest health gate so challenged URLs never reach browser media elements.
 - Preserve camera self-healing: successful metadata refreshes every 90 seconds,
   empty/error metadata retries after 10 seconds, and a feed that fails or makes
   no media-time progress for 25 seconds falls back and retries after 10 seconds.
@@ -82,9 +86,9 @@ git diff --check
 ```
 
 For camera/location or playback changes, also verify the live NWS point, all
-selected HLS manifests and media segments, all iframe fallbacks, advancing
-`video.currentTime` across every feed, and the 1920×1080 layout. Use Node 22+
-for Wrangler commands.
+selected HLS manifests and media segments, all public image fallbacks,
+advancing `video.currentTime` across every healthy HLS feed, and the 1920×1080
+layout. Use Node 22+ for Wrangler commands.
 
 ## Documentation contract
 

@@ -19,8 +19,8 @@ static assets.
 
 - [x] Resolve and cross-check the address center.
 - [x] Rank the live DriveNC inventory by straight-line distance.
-- [x] Verify all 12 selected HLS manifests, current media segments, and
-      iframe fallback pages.
+- [x] Verify all 12 selected HLS manifests, current media segments, and public
+      snapshot fallbacks.
 - [x] Update weather, radar, camera ordering, branding, Worker identity, and
       configuration integrity checks.
 - [x] Add durable root guidance in `AGENTS.md` and `REFERENCE_INDEX.md`.
@@ -30,6 +30,9 @@ static assets.
       `east-flat-rock-cctv-weather`.
 - [x] Set/confirm `DRIVENC_API_KEY`, confirm the production build, and record
       the actual deployed URL in this README and `REFERENCE_INDEX.md`.
+- [x] Prevent NCDOT `XEngine` HTTP Basic challenges from reaching browsers by
+      health-checking HLS manifests in the Worker and serving public images
+      while a stream is challenged or unavailable.
 - [ ] Reauthorize Cloudflare's GitHub app for this repository so pushes to
       `main` resume automatic builds; direct Wrangler deploys work meanwhile.
 - [ ] Soak-test 12 simultaneous HLS feeds on the final TV/browser hardware.
@@ -108,9 +111,20 @@ US-64. The labels use those location fields. The next eligible non-interstate
 feed is ID `4874`, 3.952 miles away.
 
 Every selected master manifest and current media segment returned HTTP 200
-during verification. Every fallback page also returned HTTP 200 without an
-`X-Frame-Options` or frame-blocking CSP header. Fallback URL template:
+during the original 2026-07-18 verification. Every fallback URL also returned
+HTTP 200. Fallback URL template:
 `https://www.drivenc.gov/map/Cctv/{id}`.
+
+Runtime anomaly recorded **2026-07-26**: DriveNC continued to report all 12
+views as enabled and returned populated `VideoUrl` values, but every selected
+HLS manifest returned HTTP 401 with `WWW-Authenticate: Basic realm="XEngine"`.
+Normal DriveNC usernames/passwords and developer keys do not authenticate that
+media-server challenge. The numeric fallback URLs simultaneously returned
+fresh image responses with HTTP 200 (`image/jpeg` for current snapshots and
+`image/png` for an upstream no-feed placeholder). The Worker now probes each HLS
+manifest server-side and gives the browser only the snapshot URL while HLS is
+challenged; it rechecks after 10 seconds and automatically restores HLS when a
+valid `#EXTM3U` manifest returns.
 
 To change the roster, edit `CAMERAS` in `public/cameras.js` and
 `WANTED_CAMERA_IDS` in `src/worker.js`, keeping the numeric IDs and order
@@ -148,8 +162,9 @@ Browser (TV) ──> public/index.html / style.css / cameras.js / weather.js
               DriveNC Cameras API
 ```
 
-- `src/worker.js` handles `GET /api/cameras` and delegates all other requests
-  to the static `ASSETS` binding.
+- `src/worker.js` handles `GET /api/cameras`, verifies each candidate HLS
+  manifest before exposing its URL to the browser, and delegates all other
+  requests to the static `ASSETS` binding.
 - The Worker caches the upstream camera metadata for 90 seconds, protecting
   DriveNC's 10 requests / 60 seconds limit and keeping the key out of the
   browser.
@@ -173,11 +188,13 @@ npm run dev
 ```
 
 Without a key, `/api/cameras` returns `[]` and every tile uses its public
-DriveNC iframe fallback. With a key, each tile upgrades to HLS. A feed falls
-back individually if playback does not begin within about 18 seconds or stops
-advancing for 25 seconds, then retries HLS after 10 seconds. Successful camera
-metadata refreshes every 90 seconds; an empty or failed response retries after
-10 seconds and focus, visibility, and network-restoration events trigger an
+DriveNC image fallback. With a key, each tile upgrades to HLS only
+after the Worker receives a successful manifest beginning with `#EXTM3U`. A
+feed falls back individually if playback does not begin within about 18
+seconds or stops advancing for 25 seconds, then requests a new server-side HLS
+health check after 10 seconds. Successful camera metadata refreshes every 90
+seconds; unavailable HLS, an empty response, or a failed response retries after
+10 seconds, and focus, visibility, and network-restoration events trigger an
 immediate check.
 
 ## Cloudflare deployment
@@ -218,8 +235,8 @@ If all feeds unexpectedly fall back, request `/api/cameras`. An empty array
 with HTTP 200 means `DRIVENC_API_KEY` is absent; HTTP 502 indicates an upstream
 request failure. Re-add the secret and allow a few seconds for propagation.
 The wall retries an empty response every 10 seconds. A red camera status means
-HLS playback failed or stalled and is in its automatic 10-second recovery
-cycle; green means media time is advancing.
+HLS playback failed or stalled and is entering its automatic server-gated
+recovery cycle; a working snapshot or advancing HLS feed displays green.
 
 ## Validation
 
@@ -230,9 +247,10 @@ git diff --check
 ```
 
 Before release, also verify the NWS point lookup, a current manifest and media
-segment for every feed, the iframe fallback with the key absent, click-to-feature
-behavior, and the full layout at 1920×1080. See `REFERENCE_INDEX.md` for the
-ownership map and full camera evidence.
+segment for every healthy HLS feed, the public image fallback with the key
+absent or HLS challenged, click-to-feature behavior, and the full layout at
+1920×1080. See `REFERENCE_INDEX.md` for the ownership map and full camera
+evidence.
 
 ## Data sources
 

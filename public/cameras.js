@@ -90,15 +90,6 @@ function setFeatureCamera(nextFeature) {
   });
 }
 
-// The drivenc.gov viewer page renders at its own natural desktop size —
-// embedded at 100%/100% it just shows an unscaled, cropped fragment (the
-// page's own oversized header text filling the whole tile). Instead, size
-// the iframe to that natural viewport and scale the whole thing down to
-// cover the tile, so it reads as "a small view of their page" rather than
-// "zoomed into one corner of it".
-const IFRAME_NATURAL_WIDTH = 1600;
-const IFRAME_NATURAL_HEIGHT = 1000;
-
 function disposeTileResources(tile) {
   const playback = tile._playbackState;
   if (playback) {
@@ -117,61 +108,23 @@ function disposeTileResources(tile) {
     tile._streamRetryTimer = null;
   }
 
-  if (tile._fallbackResizeObserver) {
-    tile._fallbackResizeObserver.disconnect();
-    tile._fallbackResizeObserver = null;
-  }
 }
 
-function renderFallbackIframe(tile, { error = false } = {}) {
-  const id = tile.dataset.id;
+function renderFallbackSnapshot(tile, { error = false } = {}) {
+  renderImage(tile, viewerUrl(tile.dataset.id), { error });
+}
+
+function renderImage(tile, imageUrl, { error = false } = {}) {
   disposeTileResources(tile);
-  tile.classList.remove("live");
+  tile.classList.toggle("live", !error);
   tile.classList.toggle("error", error);
-  const media = tile.querySelector(".media");
-  media.innerHTML = "";
-
-  const iframe = document.createElement("iframe");
-  iframe.src = viewerUrl(id);
-  iframe.loading = "lazy";
-  iframe.title = tile.querySelector(".label").textContent;
-  Object.assign(iframe.style, {
-    position: "absolute",
-    top: "0",
-    left: "0",
-    width: `${IFRAME_NATURAL_WIDTH}px`,
-    height: `${IFRAME_NATURAL_HEIGHT}px`,
-    transformOrigin: "top left",
-    border: "0",
-  });
-  media.appendChild(iframe);
-
-  const scaleToFit = () => {
-    const rect = tile.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const scale = Math.max(rect.width / IFRAME_NATURAL_WIDTH, rect.height / IFRAME_NATURAL_HEIGHT);
-    iframe.style.transform = `scale(${scale})`;
-  };
-  scaleToFit();
-
-  // Tile size can change (grid reflow on load, priority tile is 3x3, etc.);
-  // keep the scale in sync rather than computing it once and going stale.
-  if (tile._fallbackResizeObserver) tile._fallbackResizeObserver.disconnect();
-  const ro = new ResizeObserver(scaleToFit);
-  ro.observe(tile);
-  tile._fallbackResizeObserver = ro;
-}
-
-function renderImage(tile, imageUrl) {
-  disposeTileResources(tile);
-  tile.classList.add("live");
-  tile.classList.remove("error");
   const media = tile.querySelector(".media");
   let img = media.querySelector("img");
   if (!img) {
     media.innerHTML = "";
     img = document.createElement("img");
     img.alt = tile.querySelector(".label").textContent;
+    img.decoding = "async";
     media.appendChild(img);
   }
   const sep = imageUrl.includes("?") ? "&" : "?";
@@ -198,6 +151,7 @@ function renderHlsStream(tile, streamUrl) {
   video.autoplay = true;
   video.muted = true;
   video.playsInline = true;
+  video.crossOrigin = "anonymous";
   video.dataset.src = streamUrl;
   media.appendChild(video);
 
@@ -235,11 +189,11 @@ function renderHlsStream(tile, streamUrl) {
         retry ? "retrying shortly" : "using fallback"
       }`
     );
-    renderFallbackIframe(tile, { error: true });
+    renderFallbackSnapshot(tile, { error: true });
     if (retry) {
       tile._streamRetryTimer = setTimeout(() => {
         tile._streamRetryTimer = null;
-        renderHlsStream(tile, streamUrl);
+        refreshCameraMetaNow({ forceHealthCheck: true });
       }, HLS_RETRY_MS);
     }
   };
@@ -300,18 +254,19 @@ function renderHlsStream(tile, streamUrl) {
 let cameraMetaRefreshTimer = null;
 let cameraMetaRefreshInFlight = false;
 
-function scheduleCameraMetaRefresh(delay) {
+function scheduleCameraMetaRefresh(delay, options = {}) {
   clearTimeout(cameraMetaRefreshTimer);
-  cameraMetaRefreshTimer = setTimeout(refreshCameraMeta, delay);
+  cameraMetaRefreshTimer = setTimeout(() => refreshCameraMeta(options), delay);
 }
 
-async function refreshCameraMeta() {
+async function refreshCameraMeta({ forceHealthCheck = false } = {}) {
   if (cameraMetaRefreshInFlight) return;
   cameraMetaRefreshInFlight = true;
   let payload = [];
   let metadataAvailable = false;
   try {
-    const res = await fetch(CAMERA_API_URL, { cache: "no-store" });
+    const url = forceHealthCheck ? `${CAMERA_API_URL}?refresh=1` : CAMERA_API_URL;
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`camera API returned ${res.status}`);
     payload = await res.json();
     if (!Array.isArray(payload)) throw new Error("camera API returned an invalid payload");
@@ -336,8 +291,8 @@ async function refreshCameraMeta() {
       if (!data || (!data.videoUrl && !data.imageUrl)) {
         // Do not tear down a healthy stream because one metadata response is
         // partial. Its own error/stall watchdog remains responsible for it.
-        if (!tile.querySelector("video, img, iframe")) {
-          renderFallbackIframe(tile);
+        if (!tile.querySelector("video, img")) {
+          renderFallbackSnapshot(tile);
         }
         return;
       }
@@ -350,20 +305,24 @@ async function refreshCameraMeta() {
         }
       } catch (err) {
         console.warn(`Failed to render camera ${id}:`, err);
-        renderFallbackIframe(tile, { error: true });
+        renderFallbackSnapshot(tile, { error: true });
       }
     });
   } finally {
     cameraMetaRefreshInFlight = false;
     const hasLiveMedia = payload.some((camera) => camera?.videoUrl || camera?.imageUrl);
-    scheduleCameraMetaRefresh(hasLiveMedia ? CAMERA_META_REFRESH_MS : CAMERA_META_RETRY_MS);
+    const shouldRetryHls = payload.some((camera) => camera?.retryHls);
+    scheduleCameraMetaRefresh(
+      hasLiveMedia && !shouldRetryHls ? CAMERA_META_REFRESH_MS : CAMERA_META_RETRY_MS,
+      { forceHealthCheck: shouldRetryHls }
+    );
   }
 }
 
-function refreshCameraMetaNow() {
+function refreshCameraMetaNow({ forceHealthCheck = false } = {}) {
   if (cameraMetaRefreshInFlight) return;
   clearTimeout(cameraMetaRefreshTimer);
-  refreshCameraMeta();
+  refreshCameraMeta({ forceHealthCheck });
 }
 
 function init() {
@@ -375,9 +334,11 @@ function init() {
     grid.appendChild(buildTile(cam, index));
   });
 
-  // Render fallback iframes immediately so the wall is useful the instant
-  // it loads, then upgrade tiles to live HLS streams once /api/cameras responds.
-  document.querySelectorAll(".camera-tile").forEach(renderFallbackIframe);
+  // Render public DriveNC snapshots immediately, then upgrade only the feeds
+  // whose HLS manifests the Worker has verified as healthy.
+  document
+    .querySelectorAll(".camera-tile")
+    .forEach((tile) => renderFallbackSnapshot(tile));
 
   refreshCameraMeta();
 

@@ -53,11 +53,18 @@ assert.match(cameraSource, /const CAMERA_META_RETRY_MS = 10_000/);
 assert.match(cameraSource, /const HLS_RETRY_MS = 10_000/);
 assert.match(cameraSource, /const HLS_STALL_TIMEOUT_MS = 25_000/);
 assert.match(cameraSource, /Date\.now\(\) - playback\.lastProgressAt >= HLS_STALL_TIMEOUT_MS/);
+assert.match(cameraSource, /video\.crossOrigin = "anonymous"/);
+assert.match(cameraSource, /refreshCameraMetaNow\(\{ forceHealthCheck: true \}\)/);
+assert.match(cameraSource, /function renderFallbackSnapshot\(tile/);
+assert.doesNotMatch(cameraSource, /createElement\("iframe"\)/);
 assert.match(cameraSource, /function setFeatureCamera\(nextFeature\)/);
 assert.match(cameraSource, /currentFeature\?\.classList\.remove\("priority"\)/);
 assert.match(cameraSource, /nextFeature\.classList\.add\("priority"\)/);
 assert.match(styleSource, /\.camera-tile\.priority\s*{\s*grid-area: 1 \/ 1 \/ span 3 \/ span 3;/);
 assert.match(workerSource, /"cache-control": "no-store"/);
+assert.match(workerSource, /async function resolveAvailableMedia\(media\)/);
+assert.match(workerSource, /manifest\.trimStart\(\)\.startsWith\("#EXTM3U"\)/);
+assert.match(workerSource, /forceHealthCheck: url\.searchParams\.get\("refresh"\) === "1"/);
 
 const packageJson = JSON.parse(packageSource);
 const lockJson = JSON.parse(lockSource);
